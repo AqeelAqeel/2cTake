@@ -953,5 +953,5 @@ When adding features, update this doc. Below are implementation guides for commo
 
 ---
 
-*Last updated: 2026-02-25*
+*Last updated: 2026-02-25 (added URL-based artifact import)*
 *Update this file whenever you make structural changes to the codebase.*
