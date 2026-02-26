@@ -7,6 +7,8 @@ interface UseAnnotationGesturesConfig {
   canvas: Canvas | null
   containerRef: React.RefObject<HTMLDivElement | null>
   onZoomChange: (zoom: number) => void
+  annotationEnabled: boolean
+  activeTool: string
   minZoom?: number
   maxZoom?: number
 }
@@ -17,11 +19,18 @@ export function useAnnotationGestures({
   canvas,
   containerRef,
   onZoomChange,
+  annotationEnabled,
+  activeTool,
   minZoom = 0.25,
   maxZoom = 4,
 }: UseAnnotationGesturesConfig) {
   const lastZoomRef = useRef(1)
   const isPinching = useRef(false)
+  // Track latest values in refs so gesture callbacks see current state
+  const annotationEnabledRef = useRef(annotationEnabled)
+  const activeToolRef = useRef(activeTool)
+  annotationEnabledRef.current = annotationEnabled
+  activeToolRef.current = activeTool
 
   // Sync initial zoom
   useEffect(() => {
@@ -46,33 +55,54 @@ export function useAnnotationGestures({
         isPinching.current = false
       },
       onDrag: ({ delta: [dx, dy], touches, event, pinching }) => {
-        // Only pan with two-finger drag (not during pinch)
         if (!canvas || pinching || isPinching.current) return
+
+        // Two-finger drag always pans (touch)
         if (touches > 1) {
+          event?.preventDefault()
+          canvas.relativePan(new Point(dx, dy))
+          canvas.renderAll()
+          return
+        }
+
+        // Single-finger / mouse drag pans when annotations are off
+        // or when using select tool on empty canvas area
+        const canPan =
+          !annotationEnabledRef.current ||
+          activeToolRef.current === 'select'
+
+        if (canPan && touches <= 1) {
           event?.preventDefault()
           canvas.relativePan(new Point(dx, dy))
           canvas.renderAll()
         }
       },
-      onWheel: ({ delta: [, dy], event }) => {
+      onWheel: ({ delta: [dx, dy], event }) => {
         const we = event as WheelEvent
-        // Only zoom with Ctrl/Cmd held (standard canvas behavior)
-        // Trackpad pinch generates ctrlKey wheel events, so pinch-to-zoom still works
-        if (!we.ctrlKey && !we.metaKey) return
-        event.preventDefault()
         if (!canvas || !containerRef.current) return
-        // Ignore tiny deltas (noise / momentum tail)
-        if (Math.abs(dy) < 0.5) return
-        const rect = containerRef.current.getBoundingClientRect()
-        const factor = dy > 0 ? 0.95 : 1.05
-        const newZoom = clamp(canvas.getZoom() * factor, minZoom, maxZoom)
-        const pointer = new Point(
-          we.clientX - rect.left,
-          we.clientY - rect.top
-        )
-        canvas.zoomToPoint(pointer, newZoom)
-        lastZoomRef.current = newZoom
-        onZoomChange(newZoom)
+
+        // Ctrl/Cmd + scroll = zoom (standard canvas behavior)
+        // Trackpad pinch generates ctrlKey wheel events, so pinch-to-zoom still works
+        if (we.ctrlKey || we.metaKey) {
+          event.preventDefault()
+          if (Math.abs(dy) < 0.5) return
+          const rect = containerRef.current.getBoundingClientRect()
+          const factor = dy > 0 ? 0.95 : 1.05
+          const newZoom = clamp(canvas.getZoom() * factor, minZoom, maxZoom)
+          const pointer = new Point(
+            we.clientX - rect.left,
+            we.clientY - rect.top
+          )
+          canvas.zoomToPoint(pointer, newZoom)
+          lastZoomRef.current = newZoom
+          onZoomChange(newZoom)
+          return
+        }
+
+        // Regular scroll = pan the document
+        event.preventDefault()
+        canvas.relativePan(new Point(-dx, -dy))
+        canvas.renderAll()
       },
     },
     {

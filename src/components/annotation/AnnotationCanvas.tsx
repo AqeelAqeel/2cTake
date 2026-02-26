@@ -204,6 +204,8 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
     canvas: canvasRef.current,
     containerRef,
     onZoomChange: handleZoomChange,
+    annotationEnabled,
+    activeTool,
   })
 
   // ---- Snapshot capture ----

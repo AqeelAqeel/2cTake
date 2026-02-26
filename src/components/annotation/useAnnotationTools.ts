@@ -52,9 +52,10 @@ export function useAnnotationTools({
     }
 
     // Re-enable objects for interaction
+    const canInteract = activeTool === 'select' || activeTool === 'circle' || activeTool === 'rectangle'
     canvas.forEachObject((obj) => {
-      obj.selectable = activeTool === 'select'
-      obj.evented = activeTool === 'select' || (activeTool === 'eraser' && eraserMode === 'tap')
+      obj.selectable = canInteract
+      obj.evented = canInteract || (activeTool === 'eraser' && eraserMode === 'tap')
     })
 
     switch (activeTool) {
@@ -148,6 +149,19 @@ export function useAnnotationTools({
 
     const handleMouseDown = (opt: FabricPointerEvent) => {
       if (isDrawingShape.current) return
+
+      // If clicking on an existing object, let the user interact with it
+      // instead of spawning a new shape
+      const target = canvas.findTarget(opt.e as never)
+      if (target) {
+        canvas.setActiveObject(target)
+        canvas.renderAll()
+        return
+      }
+
+      // Deselect any previously selected object
+      canvas.discardActiveObject()
+
       isDrawingShape.current = true
       const pointer = canvas.getScenePoint(opt.e as never)
       originRef.current = { x: pointer.x, y: pointer.y }
@@ -207,6 +221,9 @@ export function useAnnotationTools({
       isDrawingShape.current = false
 
       if (activeShape.current) {
+        // Make the new shape selectable so user can interact with it
+        activeShape.current.selectable = true
+        activeShape.current.evented = true
         activeShape.current.setCoords()
         canvas.setActiveObject(activeShape.current)
         activeShape.current = null
