@@ -7,6 +7,7 @@ import { Dashboard } from './pages/Dashboard'
 import { NewSession } from './pages/NewSession'
 import { SessionDetail } from './pages/SessionDetail'
 import { ReviewLink } from './pages/ReviewLink'
+import { AuthCallback } from './pages/AuthCallback'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore()
@@ -34,6 +35,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/review/:shareToken" element={<ReviewLink />} />
         <Route
           path="/"
