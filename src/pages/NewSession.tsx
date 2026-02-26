@@ -5,6 +5,7 @@ import {
   Upload,
   FileText,
   Image,
+  File as FileIcon,
   X,
   ArrowLeft,
   Loader2,
@@ -12,7 +13,33 @@ import {
   Check,
   ExternalLink,
   Clock,
+  Link,
+  Globe,
 } from 'lucide-react'
+
+type InputMode = 'file' | 'url'
+
+interface UrlValidation {
+  valid: boolean
+  type: 'google_docs' | 'google_slides' | 'generic' | ''
+  message: string
+}
+
+function validateUrl(url: string): UrlValidation {
+  if (!url.trim()) return { valid: false, type: '', message: '' }
+
+  try {
+    new URL(url)
+  } catch {
+    return { valid: false, type: '', message: 'Invalid URL' }
+  }
+
+  if (/docs\.google\.com\/document\/d\//.test(url))
+    return { valid: true, type: 'google_docs', message: 'Google Doc \u2014 will export as PDF' }
+  if (/docs\.google\.com\/presentation\/d\//.test(url))
+    return { valid: true, type: 'google_slides', message: 'Google Slides \u2014 will export as PDF' }
+  return { valid: true, type: 'generic', message: 'Web page \u2014 will capture as screenshot' }
+}
 
 export function NewSession() {
   const navigate = useNavigate()
@@ -26,6 +53,10 @@ export function NewSession() {
   const [preview, setPreview] = useState<string | null>(null)
   const [created, setCreated] = useState<{ id: string; shareToken: string } | null>(null)
   const [copied, setCopied] = useState(false)
+
+  const [inputMode, setInputMode] = useState<InputMode>('file')
+  const [artifactUrl, setArtifactUrl] = useState('')
+  const [urlValidation, setUrlValidation] = useState<UrlValidation | null>(null)
 
   const handleFile = (f: File) => {
     setFile(f)
@@ -42,14 +73,23 @@ export function NewSession() {
     if (f) handleFile(f)
   }
 
+  const handleUrlChange = (value: string) => {
+    setArtifactUrl(value)
+    setUrlValidation(value.trim() ? validateUrl(value) : null)
+  }
+
+  const hasArtifact =
+    inputMode === 'file' ? !!file : !!(artifactUrl.trim() && urlValidation?.valid)
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file || !title.trim()) return
+    if (!hasArtifact || !title.trim()) return
 
     const session = await createSession({
       title: title.trim(),
       context: context.trim(),
-      artifactFile: file,
+      artifactFile: inputMode === 'file' ? file! : undefined,
+      artifactUrl: inputMode === 'url' ? artifactUrl.trim() : undefined,
       maxDuration,
     })
 
@@ -67,6 +107,13 @@ export function NewSession() {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  const loadingMessage =
+    inputMode === 'url'
+      ? urlValidation?.type === 'google_docs' || urlValidation?.type === 'google_slides'
+        ? 'Fetching document...'
+        : 'Capturing screenshot...'
+      : 'Creating session...'
 
   // Success state
   if (created) {
@@ -192,7 +239,7 @@ export function NewSession() {
                     : 'bg-surface border border-border text-text-secondary hover:bg-surface-tertiary'
                 }`}
               >
-                {val === null ? 'No limit' : val < 120 ? `${val / 60}m` : `${val / 60}m`}
+                {val === null ? 'No limit' : `${val / 60}m`}
               </button>
             ))}
           </div>
@@ -204,77 +251,134 @@ export function NewSession() {
           )}
         </div>
 
-        {/* File upload */}
+        {/* Artifact input */}
         <div>
           <label className="block text-sm font-medium text-text-primary">
             Artifact
           </label>
 
-          {!file ? (
-            <div
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
-              onClick={() => fileInputRef.current?.click()}
-              className="mt-1.5 flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border px-6 py-10 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"
+          {/* Mode toggle */}
+          <div className="mt-1.5 flex rounded-lg border border-border bg-surface-tertiary p-0.5">
+            <button
+              type="button"
+              onClick={() => setInputMode('file')}
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                inputMode === 'file'
+                  ? 'bg-surface text-text-primary shadow-sm'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
             >
-              <Upload className="h-8 w-8 text-text-muted" />
-              <div className="text-center">
-                <p className="text-sm font-medium text-text-primary">
-                  Drop a file here or click to upload
-                </p>
-                <p className="mt-1 text-xs text-text-muted">
-                  PDF or image (PNG, JPG, WebP)
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="mt-1.5 flex items-center gap-3 rounded-xl border border-border bg-surface-tertiary px-4 py-3">
-              {file.type === 'application/pdf' ? (
-                <FileText className="h-5 w-5 text-red-500 shrink-0" />
+              <Upload className="h-3.5 w-3.5" />
+              Upload file
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode('url')}
+              className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                inputMode === 'url'
+                  ? 'bg-surface text-text-primary shadow-sm'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+            >
+              <Link className="h-3.5 w-3.5" />
+              Paste URL
+            </button>
+          </div>
+
+          {inputMode === 'file' ? (
+            <>
+              {!file ? (
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-3 flex cursor-pointer flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border px-6 py-10 hover:border-brand-300 hover:bg-brand-50/30 transition-colors"
+                >
+                  <Upload className="h-8 w-8 text-text-muted" />
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-text-primary">
+                      Drop a file here or click to upload
+                    </p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      PDF, image, or document (DOCX, PPTX, XLSX, TXT, CSV)
+                    </p>
+                  </div>
+                </div>
               ) : (
-                <Image className="h-5 w-5 text-blue-500 shrink-0" />
+                <div className="mt-3 flex items-center gap-3 rounded-xl border border-border bg-surface-tertiary px-4 py-3">
+                  {file.type === 'application/pdf' ? (
+                    <FileText className="h-5 w-5 text-red-500 shrink-0" />
+                  ) : file.type.startsWith('image/') ? (
+                    <Image className="h-5 w-5 text-blue-500 shrink-0" />
+                  ) : (
+                    <FileIcon className="h-5 w-5 text-violet-500 shrink-0" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-text-primary">
+                      {file.name}
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      {(file.size / 1024 / 1024).toFixed(1)} MB
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFile(null)
+                      setPreview(null)
+                    }}
+                    className="shrink-0 rounded-lg p-1 text-text-muted hover:text-text-primary transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-text-primary">
-                  {file.name}
-                </p>
-                <p className="text-xs text-text-muted">
-                  {(file.size / 1024 / 1024).toFixed(1)} MB
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setFile(null)
-                  setPreview(null)
+
+              {preview && (
+                <div className="mt-3 rounded-xl border border-border overflow-hidden">
+                  <img
+                    src={preview}
+                    alt="Preview"
+                    className="max-h-48 w-full object-contain bg-surface-tertiary"
+                  />
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.rtf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) handleFile(f)
                 }}
-                className="shrink-0 rounded-lg p-1 text-text-muted hover:text-text-primary transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-
-          {preview && (
-            <div className="mt-3 rounded-xl border border-border overflow-hidden">
-              <img
-                src={preview}
-                alt="Preview"
-                className="max-h-48 w-full object-contain bg-surface-tertiary"
               />
+            </>
+          ) : (
+            <div className="mt-3">
+              <div className="relative">
+                <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
+                <input
+                  type="url"
+                  value={artifactUrl}
+                  onChange={(e) => handleUrlChange(e.target.value)}
+                  placeholder="https://docs.google.com/document/d/..."
+                  className="w-full rounded-xl border border-border bg-surface pl-10 pr-4 py-3 text-sm text-text-primary placeholder:text-text-muted outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-colors"
+                />
+              </div>
+
+              {urlValidation && (
+                <p className={`mt-2 text-xs ${urlValidation.valid ? 'text-brand-600' : 'text-red-500'}`}>
+                  {urlValidation.message}
+                </p>
+              )}
+
+              <p className="mt-2 text-xs text-text-muted">
+                Google Docs, Google Slides, or any public web page
+              </p>
             </div>
           )}
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.png,.jpg,.jpeg,.webp"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) handleFile(f)
-            }}
-          />
         </div>
 
         {/* Error display */}
@@ -287,13 +391,13 @@ export function NewSession() {
         {/* Submit */}
         <button
           type="submit"
-          disabled={loading || !file || !title.trim()}
+          disabled={loading || !hasArtifact || !title.trim()}
           className="w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? (
             <span className="inline-flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Creating session...
+              {loadingMessage}
             </span>
           ) : (
             'Create Session'

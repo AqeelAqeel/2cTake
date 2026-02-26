@@ -4,13 +4,14 @@ import { useSessionStore } from '../state/sessionStore'
 import { useRecorderStore } from '../state/recorderStore'
 import { uploadRecording, registerReviewer } from '../lib/upload'
 import { ArtifactViewer } from '../components/ArtifactViewer'
-import { PermissionsGate } from '../components/PermissionsGate'
 import { Recorder } from '../components/Recorder'
 import { UploadProgress } from '../components/UploadProgress'
-import { Video, Loader2, AlertCircle, Clock } from 'lucide-react'
+import { OnboardingOverlay } from '../components/OnboardingOverlay'
+import { CountdownOverlay } from '../components/CountdownOverlay'
+import { Video, Loader2, AlertCircle } from 'lucide-react'
 import type { Session } from '../types'
 
-type ReviewStep = 'loading' | 'error' | 'entry' | 'permissions' | 'recording' | 'uploading' | 'done'
+type ReviewStep = 'loading' | 'error' | 'entry' | 'onboarding' | 'countdown' | 'recording' | 'uploading' | 'done'
 
 export function ReviewLink() {
   const { shareToken } = useParams<{ shareToken: string }>()
@@ -40,17 +41,21 @@ export function ReviewLink() {
     try {
       const id = await registerReviewer(session.id, name.trim())
       setReviewerId(id)
-      setStep('permissions')
+      setStep('onboarding')
     } catch {
       setStep('error')
     }
   }
 
-  const handlePermissionsGranted = (stream: MediaStream) => {
+  const handleOnboardingComplete = useCallback((stream: MediaStream) => {
     recorderStore.setMediaStream(stream)
     recorderStore.reset()
+    setStep('countdown')
+  }, [recorderStore])
+
+  const handleCountdownFinish = useCallback(() => {
     setStep('recording')
-  }
+  }, [])
 
   const handleSend = useCallback(
     async (blob: Blob, _duration: number) => {
@@ -62,7 +67,6 @@ export function ReviewLink() {
         await uploadRecording(blob, session.id, reviewerId, (pct) => {
           recorderStore.setUploadProgress(pct)
         })
-        // Update recording duration
         setUploadStatus('success')
         setStep('done')
       } catch {
@@ -73,7 +77,6 @@ export function ReviewLink() {
   )
 
   const handleRetryUpload = () => {
-    // User would need to re-record since we don't persist the blob
     setStep('recording')
     recorderStore.reset()
   }
@@ -175,13 +178,32 @@ export function ReviewLink() {
     )
   }
 
-  // Permissions
-  if (step === 'permissions') {
+  // Onboarding and Countdown — show artifact blurred behind overlay
+  if (step === 'onboarding' || step === 'countdown') {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4">
-        <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6">
-          <PermissionsGate onGranted={handlePermissionsGranted} />
-        </div>
+      <div className="relative h-screen overflow-hidden">
+        {/* Artifact behind, blurred */}
+        {session && (
+          <div className="h-full blur-md opacity-50 pointer-events-none">
+            <div className="flex h-full flex-col lg:flex-row">
+              <div className="flex-1 overflow-hidden p-4 lg:p-6">
+                <ArtifactViewer
+                  url={session.artifact_url}
+                  type={session.artifact_type}
+                  className="h-full"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Overlay */}
+        {step === 'onboarding' && (
+          <OnboardingOverlay onComplete={handleOnboardingComplete} />
+        )}
+        {step === 'countdown' && (
+          <CountdownOverlay onFinish={handleCountdownFinish} />
+        )}
       </div>
     )
   }
@@ -210,18 +232,12 @@ export function ReviewLink() {
 
       {/* Recorder panel */}
       <div className="w-full p-4 lg:w-[420px] lg:p-6">
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4">
           <p className="text-sm text-text-secondary">
             Recording as <span className="font-medium text-text-primary">{name}</span>
           </p>
-          {session?.max_duration && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-surface-tertiary px-2.5 py-1 text-xs text-text-muted">
-              <Clock className="h-3 w-3" />
-              {session.max_duration / 60}m limit
-            </span>
-          )}
         </div>
-        <Recorder onSend={handleSend} maxDuration={session?.max_duration} />
+        <Recorder onSend={handleSend} maxDuration={session?.max_duration} autoStart />
       </div>
     </div>
   )

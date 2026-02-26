@@ -2,6 +2,18 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import type { Session, Recording, Transcript } from '../types'
 
+/** Resolve artifact_url from a storage path to a signed URL (1-hour expiry). */
+async function resolveArtifactUrl<T extends { artifact_url: string }>(
+  session: T
+): Promise<T> {
+  // Legacy rows may already contain a full public URL — leave them alone
+  if (session.artifact_url.startsWith('http')) return session
+  const { data } = await supabase.storage
+    .from('artifacts')
+    .createSignedUrl(session.artifact_url, 3600)
+  return { ...session, artifact_url: data?.signedUrl ?? session.artifact_url }
+}
+
 interface SessionState {
   sessions: Session[]
   currentSession: Session | null
@@ -16,7 +28,8 @@ interface SessionState {
   createSession: (data: {
     title: string
     context: string
-    artifactFile: File
+    artifactFile?: File
+    artifactUrl?: string
     maxDuration: number | null
   }) => Promise<Session | null>
   updateSession: (
@@ -46,12 +59,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (error) {
       set({ error: error.message, loading: false })
     } else {
-      const sessions = (data ?? []).map(
+      const raw = (data ?? []).map(
         ({ recordings: counts, ...rest }: any) => ({
           ...rest,
           recording_count: counts?.[0]?.count ?? 0,
         })
       )
+      const sessions = await Promise.all(raw.map(resolveArtifactUrl))
       set({ sessions, loading: false })
     }
   },
@@ -67,7 +81,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     if (error) {
       set({ error: error.message, loading: false })
     } else {
-      set({ currentSession: data, loading: false })
+      const session = await resolveArtifactUrl(data)
+      set({ currentSession: session, loading: false })
     }
   },
 
@@ -79,10 +94,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       .single()
 
     if (error) return null
-    return data as Session
+    return resolveArtifactUrl(data as Session)
   },
 
-  createSession: async ({ title, context, artifactFile, maxDuration }) => {
+  createSession: async ({ title, context, artifactFile, artifactUrl, maxDuration }) => {
     set({ loading: true, error: null })
 
     // Get the authenticated user's ID for owner_id
@@ -92,22 +107,49 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return null
     }
 
-    const fileExt = artifactFile.name.split('.').pop()?.toLowerCase()
-    const artifactType = fileExt === 'pdf' ? 'pdf' : 'image'
-    const filePath = `${crypto.randomUUID()}.${fileExt}`
+    let filePath: string
+    let artifactType: string
+    let sourceUrl: string | null = null
+    let sourceType: string | null = null
 
-    const { error: uploadError } = await supabase.storage
-      .from('artifacts')
-      .upload(filePath, artifactFile)
+    if (artifactUrl) {
+      // URL import path — call fetch-artifact edge function
+      const { data: result, error: fnError } = await supabase.functions.invoke(
+        'fetch-artifact',
+        { body: { url: artifactUrl } }
+      )
 
-    if (uploadError) {
-      set({ error: `Upload failed: ${uploadError.message}`, loading: false })
+      if (fnError || result?.error) {
+        const msg = result?.error || fnError?.message || 'Failed to fetch artifact from URL'
+        set({ error: msg, loading: false })
+        return null
+      }
+
+      filePath = result.storage_path
+      artifactType = result.artifact_type
+      sourceUrl = artifactUrl
+      sourceType = result.source_type
+    } else if (artifactFile) {
+      // Direct file upload path (existing logic)
+      const fileExt = artifactFile.name.split('.').pop()?.toLowerCase()
+      const documentExts = ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'rtf']
+      artifactType = fileExt === 'pdf' ? 'pdf'
+        : documentExts.includes(fileExt ?? '') ? 'document'
+        : 'image'
+      filePath = `${crypto.randomUUID()}.${fileExt}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('artifacts')
+        .upload(filePath, artifactFile)
+
+      if (uploadError) {
+        set({ error: `Upload failed: ${uploadError.message}`, loading: false })
+        return null
+      }
+    } else {
+      set({ error: 'A file or URL is required', loading: false })
       return null
     }
-
-    const { data: urlData } = supabase.storage
-      .from('artifacts')
-      .getPublicUrl(filePath)
 
     const shareToken = crypto.randomUUID().replace(/-/g, '').slice(0, 12)
 
@@ -117,10 +159,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         owner_id: user.id,
         title,
         context,
-        artifact_url: urlData.publicUrl,
+        artifact_url: filePath,
         artifact_type: artifactType,
         share_token: shareToken,
         max_duration: maxDuration,
+        source_url: sourceUrl,
+        source_type: sourceType,
       })
       .select()
       .single()
@@ -130,7 +174,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return null
     }
 
-    const session = { ...data, recording_count: 0 } as Session
+    const session = await resolveArtifactUrl({ ...data, recording_count: 0 } as Session)
     set((state) => ({
       sessions: [session, ...state.sessions],
       loading: false,

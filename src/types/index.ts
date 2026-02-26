@@ -4,9 +4,11 @@ export interface Session {
   title: string
   context: string | null
   artifact_url: string
-  artifact_type: 'pdf' | 'image'
+  artifact_type: 'pdf' | 'image' | 'document'
   share_token: string
   max_duration: number | null
+  source_url: string | null
+  source_type: string | null
   created_at: string
   recording_count?: number
 }

@@ -16,9 +16,10 @@ import { formatTimestamp } from '../lib/transcription'
 interface RecorderProps {
   onSend: (blob: Blob, duration: number) => void
   maxDuration?: number | null
+  autoStart?: boolean
 }
 
-export function Recorder({ onSend, maxDuration }: RecorderProps) {
+export function Recorder({ onSend, maxDuration, autoStart }: RecorderProps) {
   const {
     state,
     mediaStream,
@@ -101,6 +102,13 @@ export function Recorder({ onSend, maxDuration }: RecorderProps) {
       onSend(recordedBlob, finalDuration)
     }
   }
+
+  // Auto-start recording when coming from countdown
+  useEffect(() => {
+    if (autoStart && mediaStream && state === 'idle') {
+      startRecording()
+    }
+  }, [autoStart, mediaStream, state, startRecording])
 
   const isRecordingActive = state === 'recording' || state === 'paused'
 

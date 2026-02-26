@@ -343,6 +343,8 @@ Auto-populated by a trigger on `auth.users` INSERT/UPDATE. When a user signs in 
 | artifact_type | text | `'pdf'` or `'image'` (check constraint) |
 | share_token | text | Unique, used in review URL, 12-char alphanumeric |
 | max_duration | integer | Nullable. Seconds. Auto-stops recording if set |
+| source_url | text | Nullable. Original URL if imported via URL |
+| source_type | text | Nullable. `'google_docs'`, `'google_slides'`, `'firecrawl'`, or null |
 | created_at | timestamptz | Auto |
 
 ### `reviewers`
@@ -648,6 +650,34 @@ Each feature is named in plain English. For each: what it does, which files are 
 
 ---
 
+### Feature: "URL-Based Artifact Import"
+
+**What it does:** Instead of uploading a file, the sender can paste a URL (Google Docs, Google Slides, or any public web page). The system fetches the content server-side, converts it to PDF (Google) or screenshot PNG (generic), and stores it in Supabase Storage.
+
+**User action:** On `/new`, click "Paste URL" tab. Enter a URL. The detected URL type is shown (Google Doc, Slides, or web page). Click "Create Session". The edge function fetches and converts the artifact.
+
+**Files touched:**
+| File | Role |
+|------|------|
+| `src/pages/NewSession.tsx` | Segmented control (Upload file / Paste URL), URL input with validation |
+| `src/state/sessionStore.ts` | `createSession()` accepts optional `artifactUrl`, calls `fetch-artifact` edge function |
+| `src/types/index.ts` | `Session` interface extended with `source_url` and `source_type` |
+| `supabase/functions/fetch-artifact/index.ts` | Edge function: URL detection, Google PDF export, Firecrawl screenshot, storage upload |
+| `supabase/migrations/006_url_import_columns.sql` | Adds `source_url` and `source_type` columns to `sessions` |
+
+**Technical implementation:**
+- Client-side URL validation via regex: detects Google Docs (`/document/d/`), Google Slides (`/presentation/d/`), or generic
+- Edge function `fetch-artifact` receives `{ url }`, detects type, fetches content:
+  - Google Docs/Slides: `https://docs.google.com/.../export?format=pdf` — free, native PDF export
+  - Generic URLs: Firecrawl API `POST /v2/scrape` with `formats: ["screenshot"]` — returns base64 PNG
+- Private Google Docs detected by checking if export returns HTML instead of PDF (Content-Type check)
+- Result uploaded to `artifacts` bucket at `{UUID}.{ext}` using service role key
+- `artifact_type` set to `'pdf'` (Google) or `'image'` (screenshot) — reuses existing viewer logic
+- `source_url` and `source_type` stored on session row for provenance tracking
+- Edge function env vars: `FIRECRAWL_API_KEY` (new), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (existing)
+
+---
+
 ## 10. Project Structure
 
 ```
@@ -685,10 +715,13 @@ Each feature is named in plain English. For each: what it does, which files are 
 │   ├── migrations/
 │   │   ├── 001_initial.sql         # Full schema: sessions, reviewers, recordings, transcripts + RLS
 │   │   ├── 002_users_2ctake.sql    # users_2ctake table + auto-create trigger from auth.users
-│   │   └── 003_max_duration.sql    # Adds max_duration column to sessions
+│   │   ├── 003_max_duration.sql    # Adds max_duration column to sessions
+│   │   └── 006_url_import_columns.sql  # Adds source_url, source_type to sessions
 │   └── functions/
-│       └── transcribe/
-│           └── index.ts            # Edge function: download video → Whisper API → store transcript
+│       ├── transcribe/
+│       │   └── index.ts            # Edge function: download video → Whisper API → store transcript
+│       └── fetch-artifact/
+│           └── index.ts            # Edge function: URL → PDF/screenshot → storage upload
 ├── .env.example                    # Required env vars template
 ├── vite.config.ts                  # Vite + React + Tailwind plugins
 └── package.json
@@ -811,6 +844,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 - Edit session title/context
 - Configurable recording time limit
 - Copy share link to clipboard
+- URL-based artifact import (Google Docs, Google Slides, generic web pages via Firecrawl)
 
 ### NOT shipped (future)
 - Markup overlays on artifacts
