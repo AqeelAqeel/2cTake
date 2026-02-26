@@ -28,6 +28,7 @@ export function Recorder({ onSend, maxDuration, autoStart }: RecorderProps) {
     setState,
     setRecordedBlob,
     setDuration,
+    setRecordingStartTime,
     reset,
   } = useRecorderStore()
 
@@ -72,7 +73,8 @@ export function Recorder({ onSend, maxDuration, autoStart }: RecorderProps) {
 
     engine.start(mediaStream)
     setState('recording')
-  }, [mediaStream, maxDuration, setState, setRecordedBlob, setDuration])
+    setRecordingStartTime(Date.now())
+  }, [mediaStream, maxDuration, setState, setRecordedBlob, setDuration, setRecordingStartTime])
 
   const pauseRecording = () => {
     engineRef.current?.pause()

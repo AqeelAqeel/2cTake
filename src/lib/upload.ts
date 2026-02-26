@@ -1,10 +1,12 @@
 import { supabase } from './supabase'
+import type { AnnotationSnapshot } from '../types/annotation'
 
 export async function uploadRecording(
   blob: Blob,
   sessionId: string,
   reviewerId: string,
-  onProgress?: (pct: number) => void
+  onProgress?: (pct: number) => void,
+  annotations?: AnnotationSnapshot[]
 ): Promise<{ videoUrl: string; recordingId: string }> {
   const fileName = `${sessionId}/${reviewerId}/${Date.now()}.webm`
 
@@ -44,6 +46,25 @@ export async function uploadRecording(
   } catch {
     // Transcription is async — failure here is non-blocking
     console.warn('Transcription trigger failed, will retry later')
+  }
+
+  // Store annotation snapshots if present
+  if (annotations && annotations.length > 0) {
+    try {
+      const annotationBlob = new Blob(
+        [JSON.stringify(annotations)],
+        { type: 'application/json' }
+      )
+      const annotationPath = `${sessionId}/${reviewerId}/${recording.id}_annotations.json`
+      await supabase.storage
+        .from('recordings')
+        .upload(annotationPath, annotationBlob, {
+          contentType: 'application/json',
+          upsert: false,
+        })
+    } catch {
+      console.warn('Annotation upload failed, non-blocking')
+    }
   }
 
   onProgress?.(100)

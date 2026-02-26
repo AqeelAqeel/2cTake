@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSessionStore } from '../state/sessionStore'
 import { useRecorderStore } from '../state/recorderStore'
+import { useAnnotationStore } from '../state/annotationStore'
 import { uploadRecording, registerReviewer } from '../lib/upload'
 import { ArtifactViewer } from '../components/ArtifactViewer'
+import { AnnotationCanvas } from '../components/annotation/AnnotationCanvas'
 import { Recorder } from '../components/Recorder'
 import { UploadProgress } from '../components/UploadProgress'
 import { OnboardingOverlay } from '../components/OnboardingOverlay'
@@ -50,10 +52,12 @@ export function ReviewLink() {
   const handleOnboardingComplete = useCallback((stream: MediaStream) => {
     recorderStore.setMediaStream(stream)
     recorderStore.reset()
+    useAnnotationStore.getState().reset()
     setStep('countdown')
   }, [recorderStore])
 
   const handleCountdownFinish = useCallback(() => {
+    useAnnotationStore.getState().setRecordingStartTime(Date.now())
     setStep('recording')
   }, [])
 
@@ -63,10 +67,18 @@ export function ReviewLink() {
       setStep('uploading')
       setUploadStatus('uploading')
 
+      const snapshots = useAnnotationStore.getState().snapshots
+
       try {
-        await uploadRecording(blob, session.id, reviewerId, (pct) => {
-          recorderStore.setUploadProgress(pct)
-        })
+        await uploadRecording(
+          blob,
+          session.id,
+          reviewerId,
+          (pct) => {
+            recorderStore.setUploadProgress(pct)
+          },
+          snapshots.length > 0 ? snapshots : undefined
+        )
         setUploadStatus('success')
         setStep('done')
       } catch {
@@ -211,8 +223,8 @@ export function ReviewLink() {
   // Recording interface
   return (
     <div className="flex h-screen flex-col lg:flex-row">
-      {/* Artifact panel */}
-      <div className="flex-1 overflow-y-auto border-b border-border p-4 lg:border-b-0 lg:border-r lg:p-6">
+      {/* Artifact panel with annotation canvas */}
+      <div className="flex-1 overflow-hidden border-b border-border p-4 lg:border-b-0 lg:border-r lg:p-6">
         <div className="mb-3">
           <h2 className="text-sm font-semibold text-text-primary">
             {session?.title}
@@ -222,7 +234,7 @@ export function ReviewLink() {
           )}
         </div>
         {session && (
-          <ArtifactViewer
+          <AnnotationCanvas
             url={session.artifact_url}
             type={session.artifact_type}
             className="h-[calc(100%-3rem)]"

@@ -8,6 +8,7 @@ interface RecorderStore {
   duration: number
   uploadProgress: number
   error: string | null
+  recordingStartTime: number | null
 
   setState: (state: RecorderState) => void
   setMediaStream: (stream: MediaStream | null) => void
@@ -15,6 +16,7 @@ interface RecorderStore {
   setDuration: (duration: number) => void
   setUploadProgress: (progress: number) => void
   setError: (error: string | null) => void
+  setRecordingStartTime: (time: number) => void
   reset: () => void
 }
 
@@ -25,6 +27,7 @@ export const useRecorderStore = create<RecorderStore>((set) => ({
   duration: 0,
   uploadProgress: 0,
   error: null,
+  recordingStartTime: null,
 
   setState: (state) => set({ state }),
   setMediaStream: (mediaStream) => set({ mediaStream }),
@@ -32,6 +35,7 @@ export const useRecorderStore = create<RecorderStore>((set) => ({
   setDuration: (duration) => set({ duration }),
   setUploadProgress: (uploadProgress) => set({ uploadProgress }),
   setError: (error) => set({ error, state: error ? 'error' : 'idle' }),
+  setRecordingStartTime: (recordingStartTime) => set({ recordingStartTime }),
   reset: () =>
     set({
       state: 'idle',
@@ -39,5 +43,6 @@ export const useRecorderStore = create<RecorderStore>((set) => ({
       duration: 0,
       uploadProgress: 0,
       error: null,
+      recordingStartTime: null,
     }),
 }))

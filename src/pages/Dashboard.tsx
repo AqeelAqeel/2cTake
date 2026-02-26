@@ -500,13 +500,24 @@ function StatCard({
   )
 }
 
-function TypeBadge({ type }: { type: 'pdf' | 'image' }) {
-  return type === 'pdf' ? (
-    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
-      <FileText className="h-3 w-3" />
-      PDF
-    </span>
-  ) : (
+function TypeBadge({ type }: { type: 'pdf' | 'image' | 'document' }) {
+  if (type === 'pdf') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-700">
+        <FileText className="h-3 w-3" />
+        PDF
+      </span>
+    )
+  }
+  if (type === 'document') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+        <FileText className="h-3 w-3" />
+        Doc
+      </span>
+    )
+  }
+  return (
     <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
       <Image className="h-3 w-3" />
       Image

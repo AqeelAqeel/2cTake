@@ -12,8 +12,11 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
     "@tailwindcss/vite": "^4.1.18",
+    "@use-gesture/react": "^10.3.1",
+    "fabric": "^6.9.1",
     "idb": "^8.0.3",
     "lucide-react": "^0.566.0",
+    "pdfjs-dist": "^4.10.38",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.0",
