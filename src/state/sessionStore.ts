@@ -93,7 +93,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       .eq('share_token', token)
       .single()
 
-    if (error) return null
+    if (error) {
+      console.error('[fetchSessionByToken] Supabase error:', { code: error.code, message: error.message, details: error.details, hint: error.hint, token })
+      return null
+    }
     return resolveArtifactUrl(data as Session)
   },
 

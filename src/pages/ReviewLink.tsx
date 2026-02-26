@@ -25,17 +25,28 @@ export function ReviewLink() {
   const [name, setName] = useState('')
   const [reviewerId, setReviewerId] = useState<string | null>(null)
   const [uploadStatus, setUploadStatus] = useState<'uploading' | 'success' | 'error'>('uploading')
+  const [errorDetail, setErrorDetail] = useState<string | null>(null)
 
   useEffect(() => {
     if (!shareToken) return
-    fetchSessionByToken(shareToken).then((s) => {
-      if (s) {
-        setSession(s)
-        setStep('entry')
-      } else {
+    console.log('[ReviewLink] Fetching session for token:', shareToken)
+    fetchSessionByToken(shareToken)
+      .then((s) => {
+        if (s) {
+          console.log('[ReviewLink] Session found:', { id: s.id, title: s.title })
+          setSession(s)
+          setStep('entry')
+        } else {
+          console.error('[ReviewLink] No session returned for token:', shareToken)
+          setErrorDetail(`No session found for token: ${shareToken}`)
+          setStep('error')
+        }
+      })
+      .catch((err) => {
+        console.error('[ReviewLink] Unexpected error:', err)
+        setErrorDetail(`Unexpected error: ${err?.message ?? err}`)
         setStep('error')
-      }
-    })
+      })
   }, [shareToken, fetchSessionByToken])
 
   const handleStartReview = async () => {
@@ -44,7 +55,10 @@ export function ReviewLink() {
       const id = await registerReviewer(session.id, name.trim())
       setReviewerId(id)
       setStep('onboarding')
-    } catch {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[ReviewLink] registerReviewer error:', err)
+      setErrorDetail(`Failed to register reviewer: ${message}`)
       setStep('error')
     }
   }
@@ -112,6 +126,14 @@ export function ReviewLink() {
         </h2>
         <p className="text-sm text-text-secondary">
           This link may be invalid or expired.
+        </p>
+        {errorDetail && (
+          <pre className="mt-4 max-w-lg rounded-lg bg-red-950/50 border border-red-800/50 p-4 text-xs text-red-300 whitespace-pre-wrap break-all">
+            {errorDetail}
+          </pre>
+        )}
+        <p className="text-xs text-text-muted mt-2">
+          Token: <code className="bg-surface-secondary px-1 py-0.5 rounded">{shareToken}</code>
         </p>
       </div>
     )
