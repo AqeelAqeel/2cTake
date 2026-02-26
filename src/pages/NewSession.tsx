@@ -118,6 +118,7 @@ export function NewSession() {
   // Success state
   if (created) {
     return (
+      <div className="h-full overflow-y-auto px-6 py-8">
       <div className="mx-auto max-w-lg">
         <div className="rounded-2xl border border-border bg-surface p-8 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50">
@@ -170,10 +171,12 @@ export function NewSession() {
           </div>
         </div>
       </div>
+      </div>
     )
   }
 
   return (
+    <div className="h-full overflow-y-auto px-6 py-8">
     <div className="mx-auto max-w-xl">
       <button
         onClick={() => navigate('/')}
@@ -404,6 +407,7 @@ export function NewSession() {
           )}
         </button>
       </form>
+    </div>
     </div>
   )
 }

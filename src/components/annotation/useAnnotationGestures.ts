@@ -21,6 +21,7 @@ export function useAnnotationGestures({
   maxZoom = 4,
 }: UseAnnotationGesturesConfig) {
   const lastZoomRef = useRef(1)
+  const isPinching = useRef(false)
 
   // Sync initial zoom
   useEffect(() => {
@@ -29,6 +30,9 @@ export function useAnnotationGestures({
 
   useGesture(
     {
+      onPinchStart: () => {
+        isPinching.current = true
+      },
       onPinch: ({ offset: [scale], origin: [ox, oy], event }) => {
         event?.preventDefault()
         if (!canvas || !containerRef.current) return
@@ -37,6 +41,18 @@ export function useAnnotationGestures({
         canvas.zoomToPoint(new Point(ox - rect.left, oy - rect.top), zoom)
         lastZoomRef.current = zoom
         onZoomChange(zoom)
+      },
+      onPinchEnd: () => {
+        isPinching.current = false
+      },
+      onDrag: ({ delta: [dx, dy], touches, event, pinching }) => {
+        // Only pan with two-finger drag (not during pinch)
+        if (!canvas || pinching || isPinching.current) return
+        if (touches > 1) {
+          event?.preventDefault()
+          canvas.relativePan(new Point(dx, dy))
+          canvas.renderAll()
+        }
       },
       onWheel: ({ delta: [, dy], event }) => {
         event.preventDefault()
@@ -59,6 +75,10 @@ export function useAnnotationGestures({
       pinch: {
         scaleBounds: { min: minZoom, max: maxZoom },
         from: () => [lastZoomRef.current, 0],
+      },
+      drag: {
+        filterTaps: true,
+        pointer: { touch: true },
       },
     }
   )

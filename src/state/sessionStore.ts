@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import type { Session, Recording, Transcript } from '../types'
+import type { AnnotationSnapshot } from '../types/annotation'
 
 /** Resolve artifact_url from a storage path to a signed URL (1-hour expiry). */
 async function resolveArtifactUrl<T extends { artifact_url: string }>(
@@ -19,6 +20,7 @@ interface SessionState {
   currentSession: Session | null
   recordings: Recording[]
   transcripts: Record<string, Transcript>
+  annotations: Record<string, AnnotationSnapshot[]>
   loading: boolean
   error: string | null
 
@@ -38,6 +40,7 @@ interface SessionState {
   ) => Promise<string | null>
   fetchRecordings: (sessionId: string) => Promise<void>
   fetchTranscript: (recordingId: string) => Promise<void>
+  fetchAnnotations: (recording: Recording) => Promise<void>
   deleteSession: (id: string) => Promise<void>
 }
 
@@ -46,6 +49,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   currentSession: null,
   recordings: [],
   transcripts: {},
+  annotations: {},
   loading: false,
   error: null,
 
@@ -246,6 +250,34 @@ export const useSessionStore = create<SessionState>((set, get) => ({
           [recordingId]: data as Transcript,
         },
       }))
+    }
+  },
+
+  fetchAnnotations: async (recording: Recording) => {
+    const existing = get().annotations[recording.id]
+    if (existing) return
+
+    // Annotation file path matches upload.ts convention:
+    // ${sessionId}/${reviewerId}/${recordingId}_annotations.json
+    const annotationPath = `${recording.session_id}/${recording.reviewer_id}/${recording.id}_annotations.json`
+
+    try {
+      const { data } = await supabase.storage
+        .from('recordings')
+        .download(annotationPath)
+
+      if (data) {
+        const text = await data.text()
+        const snapshots: AnnotationSnapshot[] = JSON.parse(text)
+        set((state) => ({
+          annotations: {
+            ...state.annotations,
+            [recording.id]: snapshots,
+          },
+        }))
+      }
+    } catch {
+      // No annotations for this recording — that's fine
     }
   },
 

@@ -29,10 +29,13 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
     activeTool,
     brushSize,
     color,
+    eraserMode,
     annotationEnabled,
     zoomLevel,
     setActiveTool,
     setBrushSize,
+    setColor,
+    setEraserMode,
     setAnnotationEnabled,
     setZoomLevel,
     captureSnapshot,
@@ -188,6 +191,7 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
     activeTool,
     brushSize,
     color,
+    eraserMode,
     annotationEnabled,
     onSnapshotCapture: handleSnapshotCapture,
   })
@@ -273,9 +277,13 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
       <ToolPalette
         activeTool={activeTool}
         brushSize={brushSize}
+        color={color}
+        eraserMode={eraserMode}
         visible={annotationEnabled}
         onSelectTool={setActiveTool}
         onSelectSize={setBrushSize}
+        onSelectColor={setColor}
+        onSelectEraserMode={setEraserMode}
       />
 
       <StickyToggle

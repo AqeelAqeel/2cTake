@@ -2,6 +2,8 @@ export type ToolType = 'pen' | 'eraser' | 'circle' | 'rectangle' | 'select' | 'n
 
 export type BrushSize = 'small' | 'medium' | 'large'
 
+export type EraserMode = 'tap' | 'stroke'
+
 export const BRUSH_WIDTHS: Record<BrushSize, number> = {
   small: 2,
   medium: 5,

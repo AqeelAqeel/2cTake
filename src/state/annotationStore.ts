@@ -1,11 +1,12 @@
 import { create } from 'zustand'
-import type { ToolType, BrushSize, AnnotationSnapshot } from '../types/annotation'
+import type { ToolType, BrushSize, EraserMode, AnnotationSnapshot } from '../types/annotation'
 import { DEFAULT_ANNOTATION_COLOR } from '../types/annotation'
 
 interface AnnotationState {
   activeTool: ToolType
   brushSize: BrushSize
   color: string
+  eraserMode: EraserMode
   annotationEnabled: boolean
   zoomLevel: number
   snapshots: AnnotationSnapshot[]
@@ -14,6 +15,7 @@ interface AnnotationState {
   setActiveTool: (tool: ToolType) => void
   setBrushSize: (size: BrushSize) => void
   setColor: (color: string) => void
+  setEraserMode: (mode: EraserMode) => void
   setAnnotationEnabled: (enabled: boolean) => void
   setZoomLevel: (zoom: number) => void
   setRecordingStartTime: (time: number) => void
@@ -25,6 +27,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   activeTool: 'pen',
   brushSize: 'medium',
   color: DEFAULT_ANNOTATION_COLOR,
+  eraserMode: 'tap',
   annotationEnabled: true,
   zoomLevel: 1,
   snapshots: [],
@@ -33,6 +36,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
   setActiveTool: (tool) => set({ activeTool: tool }),
   setBrushSize: (size) => set({ brushSize: size }),
   setColor: (color) => set({ color }),
+  setEraserMode: (mode) => set({ eraserMode: mode }),
   setAnnotationEnabled: (enabled) => set({ annotationEnabled: enabled }),
   setZoomLevel: (zoom) => set({ zoomLevel: zoom }),
   setRecordingStartTime: (time) => set({ recordingStartTime: time }),
@@ -51,6 +55,7 @@ export const useAnnotationStore = create<AnnotationState>((set, get) => ({
       activeTool: 'pen',
       brushSize: 'medium',
       color: DEFAULT_ANNOTATION_COLOR,
+      eraserMode: 'tap',
       annotationEnabled: true,
       zoomLevel: 1,
       snapshots: [],

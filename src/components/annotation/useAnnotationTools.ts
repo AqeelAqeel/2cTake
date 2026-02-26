@@ -10,11 +10,14 @@ interface FabricPointerEvent {
   viewportPoint?: { x: number; y: number }
 }
 
+type EraserMode = 'tap' | 'stroke'
+
 interface UseAnnotationToolsConfig {
   canvas: Canvas | null
   activeTool: ToolType
   brushSize: BrushSize
   color: string
+  eraserMode: EraserMode
   annotationEnabled: boolean
   onSnapshotCapture: () => void
 }
@@ -24,6 +27,7 @@ export function useAnnotationTools({
   activeTool,
   brushSize,
   color,
+  eraserMode,
   annotationEnabled,
   onSnapshotCapture,
 }: UseAnnotationToolsConfig) {
@@ -50,7 +54,7 @@ export function useAnnotationTools({
     // Re-enable objects for interaction
     canvas.forEachObject((obj) => {
       obj.selectable = activeTool === 'select'
-      obj.evented = activeTool === 'select' || activeTool === 'eraser'
+      obj.evented = activeTool === 'select' || (activeTool === 'eraser' && eraserMode === 'tap')
     })
 
     switch (activeTool) {
@@ -65,10 +69,22 @@ export function useAnnotationTools({
         break
       }
       case 'eraser': {
-        canvas.isDrawingMode = false
-        canvas.selection = false
-        canvas.defaultCursor = 'pointer'
-        canvas.hoverCursor = 'pointer'
+        if (eraserMode === 'stroke') {
+          // Freehand eraser: draws with a semi-transparent white stroke
+          canvas.isDrawingMode = true
+          canvas.selection = false
+          const brush = new PencilBrush(canvas)
+          brush.color = 'rgba(255,255,255,0.95)'
+          brush.width = (BRUSH_WIDTHS[brushSize] * 3) / canvas.getZoom()
+          canvas.freeDrawingBrush = brush
+          canvas.defaultCursor = 'crosshair'
+        } else {
+          // Tap-to-delete
+          canvas.isDrawingMode = false
+          canvas.selection = false
+          canvas.defaultCursor = 'pointer'
+          canvas.hoverCursor = 'pointer'
+        }
         break
       }
       case 'circle':
@@ -95,17 +111,21 @@ export function useAnnotationTools({
     }
 
     canvas.renderAll()
-  }, [canvas, activeTool, brushSize, color, annotationEnabled])
+  }, [canvas, activeTool, brushSize, color, eraserMode, annotationEnabled])
 
   // Update brush width when zoom changes
   const updateBrushForZoom = useCallback(() => {
-    if (!canvas || activeTool !== 'pen' || !canvas.freeDrawingBrush) return
-    canvas.freeDrawingBrush.width = BRUSH_WIDTHS[brushSize] / canvas.getZoom()
-  }, [canvas, activeTool, brushSize])
+    if (!canvas || !canvas.freeDrawingBrush) return
+    if (activeTool === 'pen') {
+      canvas.freeDrawingBrush.width = BRUSH_WIDTHS[brushSize] / canvas.getZoom()
+    } else if (activeTool === 'eraser' && eraserMode === 'stroke') {
+      canvas.freeDrawingBrush.width = (BRUSH_WIDTHS[brushSize] * 3) / canvas.getZoom()
+    }
+  }, [canvas, activeTool, brushSize, eraserMode])
 
-  // Eraser: tap-to-delete
+  // Eraser: tap-to-delete mode
   useEffect(() => {
-    if (!canvas || activeTool !== 'eraser' || !annotationEnabled) return
+    if (!canvas || activeTool !== 'eraser' || eraserMode !== 'tap' || !annotationEnabled) return
 
     const handleMouseDown = (opt: FabricPointerEvent) => {
       const target = canvas.findTarget(opt.e as never)
@@ -120,7 +140,7 @@ export function useAnnotationTools({
     return () => {
       canvas.off('mouse:down', handleMouseDown as never)
     }
-  }, [canvas, activeTool, annotationEnabled, onSnapshotCapture])
+  }, [canvas, activeTool, eraserMode, annotationEnabled, onSnapshotCapture])
 
   // Shape drawing: circle and rectangle
   useEffect(() => {
@@ -206,9 +226,10 @@ export function useAnnotationTools({
     }
   }, [canvas, activeTool, brushSize, color, annotationEnabled, onSnapshotCapture])
 
-  // Capture snapshot on pen stroke completion
+  // Capture snapshot on pen/eraser-stroke completion
   useEffect(() => {
-    if (!canvas || activeTool !== 'pen' || !annotationEnabled) return
+    if (!canvas || !annotationEnabled) return
+    if (activeTool !== 'pen' && !(activeTool === 'eraser' && eraserMode === 'stroke')) return
 
     const handlePathCreated = () => {
       onSnapshotCapture()
@@ -218,7 +239,7 @@ export function useAnnotationTools({
     return () => {
       canvas.off('path:created', handlePathCreated as never)
     }
-  }, [canvas, activeTool, annotationEnabled, onSnapshotCapture])
+  }, [canvas, activeTool, eraserMode, annotationEnabled, onSnapshotCapture])
 
   // Capture snapshot on object modified (move/resize)
   useEffect(() => {
