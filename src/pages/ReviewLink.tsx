@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSessionStore } from '../state/sessionStore'
 import { useRecorderStore } from '../state/recorderStore'
@@ -10,7 +10,7 @@ import { Recorder } from '../components/Recorder'
 import { UploadProgress } from '../components/UploadProgress'
 import { OnboardingOverlay } from '../components/OnboardingOverlay'
 import { CountdownOverlay } from '../components/CountdownOverlay'
-import { Video, Loader2, AlertCircle } from 'lucide-react'
+import { Video, Loader2, AlertCircle, Mic } from 'lucide-react'
 import type { Session } from '../types'
 
 type ReviewStep = 'loading' | 'error' | 'entry' | 'onboarding' | 'countdown' | 'recording' | 'uploading' | 'done'
@@ -26,6 +26,14 @@ export function ReviewLink() {
   const [reviewerId, setReviewerId] = useState<string | null>(null)
   const [uploadStatus, setUploadStatus] = useState<'uploading' | 'success' | 'error'>('uploading')
   const [errorDetail, setErrorDetail] = useState<string | null>(null)
+  const pipVideoRef = useRef<HTMLVideoElement>(null)
+
+  // Connect PiP webcam to media stream when recording step renders
+  useEffect(() => {
+    if (step === 'recording' && pipVideoRef.current && recorderStore.mediaStream) {
+      pipVideoRef.current.srcObject = recorderStore.mediaStream
+    }
+  }, [step, recorderStore.mediaStream])
 
   useEffect(() => {
     if (!shareToken) return
@@ -242,36 +250,63 @@ export function ReviewLink() {
     )
   }
 
-  // Recording interface
+  // Recording interface — artifact-first layout with floating controls
+  const hasVideo = recorderStore.mediaStream?.getVideoTracks()?.length > 0
+  const isRecActive = recorderStore.state === 'recording' || recorderStore.state === 'paused'
+
   return (
-    <div className="flex h-screen flex-col lg:flex-row">
-      {/* Artifact panel with annotation canvas */}
-      <div className="flex-1 overflow-hidden border-b border-border p-4 lg:border-b-0 lg:border-r lg:p-6">
-        <div className="mb-3">
-          <h2 className="text-sm font-semibold text-text-primary">
-            {session?.title}
-          </h2>
+    <div className="relative flex h-screen flex-col overflow-hidden bg-surface-secondary">
+      {/* Compact header */}
+      <div className="shrink-0 flex items-center gap-2 px-4 py-2 bg-surface border-b border-border">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold text-text-primary truncate">{session?.title}</h2>
           {session?.context && (
-            <p className="mt-1 text-xs text-text-secondary">{session.context}</p>
+            <p className="text-xs text-text-secondary truncate">{session.context}</p>
           )}
         </div>
+        <p className="text-xs text-text-muted shrink-0">
+          as <span className="font-medium text-text-secondary">{name}</span>
+        </p>
+      </div>
+
+      {/* Artifact fills remaining space */}
+      <div className="flex-1 overflow-hidden relative">
         {session && (
           <AnnotationCanvas
             url={session.artifact_url}
             type={session.artifact_type}
-            className="h-[calc(100%-3rem)]"
+            className="h-full w-full"
           />
+        )}
+
+        {/* Floating PiP webcam */}
+        {hasVideo && (
+          <div className="absolute bottom-3 right-3 z-20 w-24 aspect-[4/3] rounded-xl overflow-hidden shadow-xl border-2 border-white/20 bg-black">
+            <video
+              ref={pipVideoRef}
+              autoPlay
+              muted
+              playsInline
+              className="h-full w-full object-cover -scale-x-100"
+            />
+            {isRecActive && (
+              <div className="absolute top-1 left-1 h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </div>
+        )}
+
+        {/* Audio-only floating indicator */}
+        {!hasVideo && isRecActive && (
+          <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1.5 rounded-full bg-black/70 backdrop-blur px-3 py-1.5">
+            <div className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+            <Mic className="h-3.5 w-3.5 text-white/80" />
+          </div>
         )}
       </div>
 
-      {/* Recorder panel */}
-      <div className="w-full p-4 lg:w-[420px] lg:p-6">
-        <div className="mb-4">
-          <p className="text-sm text-text-secondary">
-            Recording as <span className="font-medium text-text-primary">{name}</span>
-          </p>
-        </div>
-        <Recorder onSend={handleSend} maxDuration={session?.max_duration} autoStart />
+      {/* Compact recording controls */}
+      <div className="shrink-0">
+        <Recorder onSend={handleSend} maxDuration={session?.max_duration} autoStart compact />
       </div>
     </div>
   )

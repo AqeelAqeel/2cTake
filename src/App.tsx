@@ -1,6 +1,7 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { Analytics } from '@vercel/analytics/react'
 import { useEffect } from 'react'
+import posthog from 'posthog-js'
 import { useAuthStore } from './state/authStore'
 import { Layout } from './components/Layout'
 import { LandingPage } from './pages/LandingPage'
@@ -9,6 +10,16 @@ import { NewSession } from './pages/NewSession'
 import { SessionDetail } from './pages/SessionDetail'
 import { ReviewLink } from './pages/ReviewLink'
 import { AuthCallback } from './pages/AuthCallback'
+
+function PostHogPageview() {
+  const location = useLocation()
+  useEffect(() => {
+    posthog.capture('$pageview', {
+      $current_url: window.location.href,
+    })
+  }, [location.pathname, location.search])
+  return null
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore()
@@ -36,6 +47,7 @@ export default function App() {
     <>
       <Analytics />
       <BrowserRouter>
+        <PostHogPageview />
         <Routes>
           <Route path="/login" element={<LandingPage />} />
           <Route path="/auth/callback" element={<AuthCallback />} />

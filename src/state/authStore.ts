@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import posthog from 'posthog-js'
 import { supabase } from '../lib/supabase'
 import type { User } from '../types'
 
@@ -20,14 +21,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
-        set({
-          user: {
-            id: session.user.id,
-            email: session.user.email ?? '',
-            name: session.user.user_metadata?.full_name ?? null,
-            avatar_url: session.user.user_metadata?.avatar_url ?? null,
-          },
-          loading: false,
+        const user = {
+          id: session.user.id,
+          email: session.user.email ?? '',
+          name: session.user.user_metadata?.full_name ?? null,
+          avatar_url: session.user.user_metadata?.avatar_url ?? null,
+        }
+        set({ user, loading: false })
+        posthog.identify(user.id, {
+          email: user.email,
+          name: user.name,
         })
       } else {
         set({ user: null, loading: false })
@@ -35,16 +38,20 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       supabase.auth.onAuthStateChange((_event, session) => {
         if (session?.user) {
-          set({
-            user: {
-              id: session.user.id,
-              email: session.user.email ?? '',
-              name: session.user.user_metadata?.full_name ?? null,
-              avatar_url: session.user.user_metadata?.avatar_url ?? null,
-            },
+          const user = {
+            id: session.user.id,
+            email: session.user.email ?? '',
+            name: session.user.user_metadata?.full_name ?? null,
+            avatar_url: session.user.user_metadata?.avatar_url ?? null,
+          }
+          set({ user })
+          posthog.identify(user.id, {
+            email: user.email,
+            name: user.name,
           })
         } else {
           set({ user: null })
+          posthog.reset()
         }
       })
     } catch {
@@ -63,6 +70,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   signOut: async () => {
     await supabase.auth.signOut()
+    posthog.reset()
     set({ user: null })
   },
 }))

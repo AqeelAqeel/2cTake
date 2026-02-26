@@ -24,6 +24,8 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
   const [loading, setLoading] = useState(true)
   const [fitZoom, setFitZoom] = useState(1)
   const [bgDimensions, setBgDimensions] = useState({ width: 0, height: 0 })
+  const bgDimensionsRef = useRef({ width: 0, height: 0 })
+  const fitZoomRef = useRef(1)
 
   const {
     activeTool,
@@ -96,6 +98,7 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
         imgWidth = imgWidth || img.width
         imgHeight = imgHeight || img.height
         setBgDimensions({ width: imgWidth, height: imgHeight })
+        bgDimensionsRef.current = { width: imgWidth, height: imgHeight }
 
         // Calculate fit zoom
         const container = containerRef.current
@@ -104,6 +107,7 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
         const containerH = container.clientHeight
         const fit = Math.min(containerW / imgWidth, containerH / imgHeight)
         setFitZoom(fit)
+        fitZoomRef.current = fit
 
         // Scale image to match canvas dimensions
         img.scaleToWidth(imgWidth)
@@ -145,19 +149,49 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
     if (!canvas || !container) return
 
     const observer = new ResizeObserver(() => {
+      const containerW = container.clientWidth
+      const containerH = container.clientHeight
+      if (containerW === 0 || containerH === 0) return
+
       // Keep upper canvas matching the container
       const upperCanvas = canvas.getElement().parentElement
       if (upperCanvas) {
         const wrapperEl = upperCanvas.parentElement
         if (wrapperEl) {
-          wrapperEl.style.width = container.clientWidth + 'px'
-          wrapperEl.style.height = container.clientHeight + 'px'
+          wrapperEl.style.width = containerW + 'px'
+          wrapperEl.style.height = containerH + 'px'
         }
       }
       canvas.setDimensions(
-        { width: container.clientWidth, height: container.clientHeight },
+        { width: containerW, height: containerH },
         { cssOnly: true }
       )
+
+      // Re-center artifact at current zoom to prevent drift on mobile
+      const dims = bgDimensionsRef.current
+      if (dims.width > 0 && dims.height > 0) {
+        // Recalculate fit zoom for new container size
+        const newFit = Math.min(containerW / dims.width, containerH / dims.height)
+        // If user hasn't manually zoomed (still at fit level), re-fit
+        const currentZoom = canvas.getZoom()
+        const wasAtFit = Math.abs(currentZoom - fitZoomRef.current) < 0.02
+        const zoom = wasAtFit ? newFit : currentZoom
+
+        fitZoomRef.current = newFit
+        setFitZoom(newFit)
+
+        if (wasAtFit) canvas.setZoom(zoom)
+
+        const vpw = dims.width * zoom
+        const vph = dims.height * zoom
+        const offsetX = (containerW - vpw) / 2
+        const offsetY = (containerH - vph) / 2
+        const vpt = canvas.viewportTransform!
+        vpt[4] = offsetX
+        vpt[5] = offsetY
+        canvas.setViewportTransform(vpt)
+        canvas.renderAll()
+      }
     })
 
     observer.observe(container)
