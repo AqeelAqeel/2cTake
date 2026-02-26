@@ -78,8 +78,8 @@ export function AnnotationPlayback({
         let imageUrl = artifactUrl
 
         if (artifactType === 'pdf') {
-          const { renderPdfPage } = await import('../../lib/pdfRenderer')
-          const result = await renderPdfPage(artifactUrl, 1, 2)
+          const { renderAllPdfPages } = await import('../../lib/pdfRenderer')
+          const result = await renderAllPdfPages(artifactUrl)
           imageUrl = result.dataUrl
         }
 
@@ -95,7 +95,10 @@ export function AnnotationPlayback({
         if (!container) return
         const containerW = container.clientWidth
         const containerH = container.clientHeight
-        const fit = Math.min(containerW / imgWidth, containerH / imgHeight)
+        const aspectRatio = imgHeight / imgWidth
+        const fit = aspectRatio > 1.8
+          ? containerW / imgWidth
+          : Math.min(containerW / imgWidth, containerH / imgHeight)
 
         img.scaleToWidth(imgWidth)
         img.scaleToHeight(imgHeight)

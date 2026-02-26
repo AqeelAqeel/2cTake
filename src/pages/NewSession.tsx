@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSessionStore } from '../state/sessionStore'
 import {
@@ -58,14 +58,52 @@ export function NewSession() {
   const [artifactUrl, setArtifactUrl] = useState('')
   const [urlValidation, setUrlValidation] = useState<UrlValidation | null>(null)
 
+  const [pdfPreview, setPdfPreview] = useState<string | null>(null)
+  const [pdfPageCount, setPdfPageCount] = useState(0)
+  const [pdfLoading, setPdfLoading] = useState(false)
+
   const handleFile = (f: File) => {
     setFile(f)
+    setPdfPreview(null)
+    setPdfPageCount(0)
     if (f.type.startsWith('image/')) {
       setPreview(URL.createObjectURL(f))
     } else {
       setPreview(null)
     }
   }
+
+  // Render PDF preview when a PDF file is selected
+  useEffect(() => {
+    if (!file || file.type !== 'application/pdf') {
+      setPdfPreview(null)
+      setPdfPageCount(0)
+      return
+    }
+
+    let cancelled = false
+    const objectUrl = URL.createObjectURL(file)
+
+    setPdfLoading(true)
+    import('../lib/pdfRenderer').then(({ renderAllPdfPages }) => {
+      renderAllPdfPages(objectUrl, 1).then((result) => {
+        if (!cancelled) {
+          setPdfPreview(result.dataUrl)
+          setPdfPageCount(result.pageCount)
+          setPdfLoading(false)
+        }
+        URL.revokeObjectURL(objectUrl)
+      }).catch(() => {
+        if (!cancelled) setPdfLoading(false)
+        URL.revokeObjectURL(objectUrl)
+      })
+    })
+
+    return () => {
+      cancelled = true
+      URL.revokeObjectURL(objectUrl)
+    }
+  }, [file])
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -329,6 +367,8 @@ export function NewSession() {
                     onClick={() => {
                       setFile(null)
                       setPreview(null)
+                      setPdfPreview(null)
+                      setPdfPageCount(0)
                     }}
                     className="shrink-0 rounded-lg p-1 text-text-muted hover:text-text-primary transition-colors"
                   >
@@ -344,6 +384,28 @@ export function NewSession() {
                     alt="Preview"
                     className="max-h-48 w-full object-contain bg-surface-tertiary"
                   />
+                </div>
+              )}
+
+              {file?.type === 'application/pdf' && (
+                <div className="mt-3 rounded-xl border border-border overflow-hidden">
+                  {pdfLoading ? (
+                    <div className="flex items-center justify-center py-8 bg-surface-tertiary">
+                      <Loader2 className="h-5 w-5 animate-spin text-brand-500" />
+                      <span className="ml-2 text-sm text-text-muted">Rendering preview...</span>
+                    </div>
+                  ) : pdfPreview ? (
+                    <div className="max-h-64 overflow-y-auto bg-surface-tertiary">
+                      <img
+                        src={pdfPreview}
+                        alt="PDF Preview"
+                        className="w-full"
+                      />
+                      <div className="sticky bottom-0 bg-surface-tertiary/90 backdrop-blur-sm px-3 py-1.5 text-xs text-text-muted text-center border-t border-border">
+                        {pdfPageCount} page{pdfPageCount !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               )}
 

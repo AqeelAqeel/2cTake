@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Canvas as FabricCanvas, FabricImage } from 'fabric'
 import { Download, FileText, Loader2 } from 'lucide-react'
-import { renderPdfPage } from '../../lib/pdfRenderer'
+import { renderAllPdfPages } from '../../lib/pdfRenderer'
 import { useAnnotationStore } from '../../state/annotationStore'
 import { useAnnotationGestures } from './useAnnotationGestures'
 import { useAnnotationTools } from './useAnnotationTools'
@@ -84,7 +84,7 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
         let imgHeight = 0
 
         if (type === 'pdf') {
-          const result = await renderPdfPage(url, 1, 2)
+          const result = await renderAllPdfPages(url)
           imageUrl = result.dataUrl
           imgWidth = result.width
           imgHeight = result.height
@@ -105,7 +105,11 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
         if (!container) return
         const containerW = container.clientWidth
         const containerH = container.clientHeight
-        const fit = Math.min(containerW / imgWidth, containerH / imgHeight)
+        // For tall documents (multi-page PDFs), fit to width so content is readable
+        const aspectRatio = imgHeight / imgWidth
+        const fit = aspectRatio > 1.8
+          ? containerW / imgWidth
+          : Math.min(containerW / imgWidth, containerH / imgHeight)
         setFitZoom(fit)
         fitZoomRef.current = fit
 
@@ -164,7 +168,10 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
       const dims = bgDimensionsRef.current
       if (dims.width > 0 && dims.height > 0) {
         // Recalculate fit zoom for new container size
-        const newFit = Math.min(containerW / dims.width, containerH / dims.height)
+        const aspectRatio = dims.height / dims.width
+        const newFit = aspectRatio > 1.8
+          ? containerW / dims.width
+          : Math.min(containerW / dims.width, containerH / dims.height)
         // If user hasn't manually zoomed (still at fit level), re-fit
         const currentZoom = canvas.getZoom()
         const wasAtFit = Math.abs(currentZoom - fitZoomRef.current) < 0.02
