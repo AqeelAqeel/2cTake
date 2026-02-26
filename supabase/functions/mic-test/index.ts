@@ -16,6 +16,14 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const apiKey = Deno.env.get('OPENAI_API_KEY')
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: 'OPENAI_API_KEY not configured in Supabase secrets' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const audioBlob = await req.blob()
 
     if (audioBlob.size === 0) {
@@ -32,7 +40,7 @@ Deno.serve(async (req) => {
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: formData,
       }

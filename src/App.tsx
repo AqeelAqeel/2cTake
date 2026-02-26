@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Analytics } from '@vercel/analytics/react'
 import { useEffect } from 'react'
 import { useAuthStore } from './state/authStore'
 import { Layout } from './components/Layout'
@@ -32,24 +33,27 @@ export default function App() {
   }, [initialize])
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LandingPage />} />
-        <Route path="/auth/callback" element={<AuthCallback />} />
-        <Route path="/review/:shareToken" element={<ReviewLink />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Dashboard />} />
-          <Route path="new" element={<NewSession />} />
-          <Route path="session/:id" element={<SessionDetail />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+    <>
+      <Analytics />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LandingPage />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/review/:shareToken" element={<ReviewLink />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="new" element={<NewSession />} />
+            <Route path="session/:id" element={<SessionDetail />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </>
   )
 }

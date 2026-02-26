@@ -17,6 +17,14 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const apiKey = Deno.env.get('OPENAI_API_KEY')
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: 'OPENAI_API_KEY not configured in Supabase secrets' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const { recording_id, video_path } = await req.json()
 
     const supabase = createClient(
@@ -61,14 +69,16 @@ Deno.serve(async (req) => {
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: formData,
       }
     )
 
     if (!whisperResponse.ok) {
-      throw new Error(`Whisper API error: ${whisperResponse.status}`)
+      const errorBody = await whisperResponse.text()
+      console.error('Whisper API error body:', errorBody)
+      throw new Error(`Whisper API error ${whisperResponse.status}: ${errorBody}`)
     }
 
     const result = await whisperResponse.json()
