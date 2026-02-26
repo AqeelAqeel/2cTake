@@ -109,12 +109,14 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
         setFitZoom(fit)
         fitZoomRef.current = fit
 
-        // Scale image to match canvas dimensions
+        // Set image at natural size — viewport zoom handles fitting
         img.scaleToWidth(imgWidth)
         img.scaleToHeight(imgHeight)
 
         canvas.backgroundImage = img
-        canvas.setDimensions({ width: imgWidth, height: imgHeight })
+        // Keep canvas at container dimensions (set during init).
+        // Do NOT resize to image dimensions — that causes double-scaling
+        // when the resize observer resets CSS back to the container size.
 
         // Apply fit zoom and center
         canvas.setZoom(fit)
@@ -153,19 +155,10 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
       const containerH = container.clientHeight
       if (containerW === 0 || containerH === 0) return
 
-      // Keep upper canvas matching the container
-      const upperCanvas = canvas.getElement().parentElement
-      if (upperCanvas) {
-        const wrapperEl = upperCanvas.parentElement
-        if (wrapperEl) {
-          wrapperEl.style.width = containerW + 'px'
-          wrapperEl.style.height = containerH + 'px'
-        }
-      }
-      canvas.setDimensions(
-        { width: containerW, height: containerH },
-        { cssOnly: true }
-      )
+      // Update both backing store AND CSS to match container.
+      // Using cssOnly causes a mismatch that leads to browser-level
+      // double-scaling on top of Fabric's viewport zoom.
+      canvas.setDimensions({ width: containerW, height: containerH })
 
       // Re-center artifact at current zoom to prevent drift on mobile
       const dims = bgDimensionsRef.current

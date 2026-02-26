@@ -100,7 +100,8 @@ Browser                  Action                    Service          Storage/DB
   |
   <------ MediaStream ----------------------------
   |
-  |  UI: split panel — artifact (left) + recorder (right)
+  |  UI: artifact-first layout — artifact fills screen (AnnotationCanvas),
+  |      compact recorder bar at bottom, PiP webcam or audio indicator in corner
   |
 [Click "Start Recording"]
   |
@@ -568,15 +569,22 @@ Each feature is named in plain English. For each: what it does, which files are 
 **Files touched:**
 | File | Role |
 |------|------|
-| `src/pages/ReviewLink.tsx` | Orchestrates full flow: loading --> entry --> permissions --> recording --> uploading --> done |
+| `src/pages/ReviewLink.tsx` | Orchestrates full flow: loading --> entry --> onboarding --> countdown --> recording --> uploading --> done. Artifact-first layout with floating controls |
 | `src/components/OnboardingOverlay.tsx` | Multi-step onboarding: permissions + mic/camera test |
 | `src/components/OnboardingStepMicTest.tsx` | Mic test with camera toggle + skip option |
-| `src/components/Recorder.tsx` | Recording controls, timer, preview, send button |
+| `src/components/Recorder.tsx` | Recording controls, timer, preview, send button. Supports `compact` mode (thin horizontal bar, no video feed) |
 | `src/components/ArtifactViewer.tsx` | Displays PDF (iframe) or image |
 | `src/components/UploadProgress.tsx` | Upload progress bar, success/error states |
+| `src/components/annotation/AnnotationCanvas.tsx` | Fabric.js canvas: renders artifact as background, supports drawing/shapes/eraser overlays, resize-safe re-centering |
+| `src/components/annotation/useAnnotationGestures.ts` | Pinch-to-zoom, two-finger pan, Ctrl/Cmd+scroll zoom (standard canvas behavior) |
+| `src/components/annotation/useAnnotationTools.ts` | Configures Fabric.js drawing mode, brush, shapes, eraser based on active tool |
+| `src/components/annotation/ToolPalette.tsx` | Floating bottom toolbar: pen, circle, rectangle, eraser, select + color/size pickers |
+| `src/components/annotation/StickyToggle.tsx` | Toggle button (top-right) to enable/disable annotation tools |
+| `src/components/annotation/ZoomIndicator.tsx` | Zoom percentage display with preset dropdown (50%, 100%, 150%, 200%, Fit) |
 | `src/lib/recorder.ts` | `RecordingEngine` class — WebRTC recording |
 | `src/lib/upload.ts` | `uploadRecording()`, `registerReviewer()` |
 | `src/state/recorderStore.ts` | Recording state machine |
+| `src/state/annotationStore.ts` | Annotation tool state, snapshots synced to recording timeline |
 | `src/state/sessionStore.ts` | `fetchSessionByToken()` |
 
 **Technical implementation:**
@@ -592,7 +600,10 @@ Each feature is named in plain English. For each: what it does, which files are 
 - Re-record: resets recorder state to `idle`, creates new engine
 - Send: calls `uploadRecording(blob, sessionId, reviewerId, onProgress)`
 - Upload progress milestones: 10% (start) --> 60% (upload complete) --> 80% (DB insert) --> 100% (edge function invoked)
-- Live video feed: `<video srcObject={mediaStream}>` with CSS `scale-x-[-1]` for mirror effect
+- **Recording layout (artifact-first):** Artifact fills the screen via `AnnotationCanvas` (full height/width). Compact header bar shows session title + reviewer name. Recorder renders in `compact` mode as a thin bottom bar with inline status/timer/controls. If webcam is active, a small PiP thumbnail floats in the bottom-right corner. If audio-only, a small floating mic indicator appears instead. Annotation tools (ToolPalette, StickyToggle, ZoomIndicator) overlay the artifact canvas.
+- **Compact Recorder mode:** When `compact={true}`, Recorder renders without the video feed — just a horizontal bar with: [REC/PAUSED indicator + timer] on the left, [action buttons] on the right. Preview playback expands above the bar when in preview state. Time-remaining progress bar renders as a thin strip above controls.
+- **Canvas gesture handling:** `useAnnotationGestures` uses `@use-gesture/react` bound to the canvas container. Pinch-to-zoom via `onPinch`, two-finger drag to pan via `onDrag` (guarded by `touches > 1`), Ctrl/Cmd+scroll to zoom via `onWheel` (requires modifier key to prevent accidental zoom from trackpad momentum). Delta threshold of 0.5 filters noise.
+- **Canvas resize stability:** `AnnotationCanvas` resize observer re-centers the artifact when the container resizes (iOS Safari URL bar, layout stabilization). Uses `bgDimensionsRef` and `fitZoomRef` to track canonical state. If user hasn't manually zoomed (within 2% of fit zoom), re-fits to new container. Otherwise preserves user zoom and only re-centers.
 
 ---
 
@@ -709,7 +720,7 @@ Each feature is named in plain English. For each: what it does, which files are 
 │   │   └── ReviewLink.tsx          # Full reviewer flow: entry → onboarding → record → send
 │   └── components/
 │       ├── Layout.tsx              # App shell: header (logo, avatar, signout) + <Outlet />
-│       ├── Recorder.tsx            # Recording UI: start/pause/stop/preview/send + timer (supports audio-only)
+│       ├── Recorder.tsx            # Recording UI: start/pause/stop/preview/send + timer (supports audio-only + compact mode)
 │       ├── ArtifactViewer.tsx      # PDF iframe or image viewer (conditional render)
 │       ├── UploadProgress.tsx      # Upload progress bar + success/error states
 │       ├── TranscriptPanel.tsx     # Timestamped transcript with clickable segments
@@ -718,8 +729,13 @@ Each feature is named in plain English. For each: what it does, which files are 
 │       ├── CountdownOverlay.tsx    # 3-2-1 countdown before recording starts
 │       ├── EditSessionModal.tsx    # Modal to edit session title/context
 │       └── annotation/
-│           ├── AnnotationCanvas.tsx # Interactive annotation overlay for reviewer markup
-│           └── AnnotationPlayback.tsx # Annotation replay synced to video timeline
+│           ├── AnnotationCanvas.tsx    # Fabric.js canvas: artifact background + drawing overlays + resize-safe re-centering
+│           ├── AnnotationPlayback.tsx  # Annotation replay synced to video timeline (session detail page)
+│           ├── useAnnotationGestures.ts # Pinch zoom, two-finger pan, Ctrl+scroll zoom via @use-gesture/react
+│           ├── useAnnotationTools.ts   # Configures Fabric.js drawing/shape/eraser modes from annotation store
+│           ├── ToolPalette.tsx         # Floating annotation toolbar: pen, circle, rect, eraser, select + sub-palettes
+│           ├── StickyToggle.tsx        # Toggle button to enable/disable annotation drawing mode
+│           └── ZoomIndicator.tsx       # Zoom % display with preset dropdown
 ├── supabase/
 │   ├── migrations/
 │   │   ├── 001_initial.sql         # Full schema: sessions, reviewers, recordings, transcripts + RLS
@@ -976,5 +992,5 @@ When adding features, update this doc. Below are implementation guides for commo
 
 ---
 
-*Last updated: 2026-02-26 (RLS security hardening, landing page, audio-only recording, camera toggle, annotations, onboarding flow)*
+*Last updated: 2026-02-26 (Artifact-first recording layout, compact recorder mode, canvas drift fix, Ctrl+scroll zoom guard, annotation toolbar overlay)*
 *Update this file whenever you make structural changes to the codebase.*
