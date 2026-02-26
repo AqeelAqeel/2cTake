@@ -12,11 +12,13 @@ DROP POLICY IF EXISTS "Session owners can read reviewers" ON reviewers;
 DROP POLICY IF EXISTS "Session owners can read recordings" ON recordings;
 
 -- Allow anyone to read reviewers (needed for .insert().select() pattern)
+DROP POLICY IF EXISTS "Reviewers can read own row" ON reviewers;
 CREATE POLICY "Reviewers can read own row"
   ON reviewers FOR SELECT
   USING (true);
 
 -- Allow anyone to read recordings
+DROP POLICY IF EXISTS "Reviewers can read own recordings" ON recordings;
 CREATE POLICY "Reviewers can read own recordings"
   ON recordings FOR SELECT
   USING (true);

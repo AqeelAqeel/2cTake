@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuthStore } from './state/authStore'
 import { Layout } from './components/Layout'
-import { Login } from './pages/Login'
+import { LandingPage } from './pages/LandingPage'
 import { Dashboard } from './pages/Dashboard'
 import { NewSession } from './pages/NewSession'
 import { SessionDetail } from './pages/SessionDetail'
@@ -34,7 +34,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route path="/login" element={<LandingPage />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/review/:shareToken" element={<ReviewLink />} />
         <Route

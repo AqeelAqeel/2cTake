@@ -55,9 +55,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   fetchSessions: async () => {
     set({ loading: true, error: null })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      set({ error: 'Not authenticated', loading: false })
+      return
+    }
     const { data, error } = await supabase
       .from('sessions')
       .select('*, recordings(count)')
+      .eq('owner_id', user.id)
       .order('created_at', { ascending: false })
 
     if (error) {
@@ -92,9 +98,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   fetchSessionByToken: async (token: string) => {
     const { data, error } = await supabase
-      .from('sessions')
-      .select('*')
-      .eq('share_token', token)
+      .rpc('get_session_by_token', { token })
       .single()
 
     if (error) {

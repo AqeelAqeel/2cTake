@@ -11,6 +11,12 @@
   --color-brand-700: #4338ca;
   --color-brand-800: #3730a3;
   --color-brand-900: #312e81;
+  --color-goblin-pink: #FF1493;
+  --color-goblin-pink-light: #FF6EB4;
+  --color-goblin-pink-dim: rgba(255, 20, 147, 0.15);
+  --color-goblin-green: #1DB954;
+  --color-goblin-green-light: #4ADE80;
+  --color-goblin-green-dim: rgba(29, 185, 84, 0.15);
   --color-surface: #ffffff;
   --color-surface-secondary: #f8fafc;
   --color-surface-tertiary: #f1f5f9;
@@ -69,4 +75,43 @@ body {
 
 .animate-pulse-dot {
   animation: pulse-dot 1.5s ease infinite;
+}
+
+/* Landing page */
+html.landing-smooth {
+  scroll-behavior: smooth;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes glow-breathe {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.05); }
+}
+
+@keyframes grid-scroll {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(60px, 60px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: float 6s ease-in-out 3s infinite;
+}
+
+.animate-glow-breathe {
+  animation: glow-breathe 4s ease-in-out infinite;
+}
+
+.landing-grid-bg {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
 }

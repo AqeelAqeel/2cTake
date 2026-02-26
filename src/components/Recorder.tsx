@@ -8,6 +8,7 @@ import {
   Send,
   Eye,
   Clock,
+  Mic,
 } from 'lucide-react'
 import { RecordingEngine } from '../lib/recorder'
 import { useRecorderStore } from '../state/recorderStore'
@@ -113,12 +114,20 @@ export function Recorder({ onSend, maxDuration, autoStart }: RecorderProps) {
   }, [autoStart, mediaStream, state, startRecording])
 
   const isRecordingActive = state === 'recording' || state === 'paused'
+  const hasVideo = mediaStream ? mediaStream.getVideoTracks().length > 0 : false
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Video feed */}
+      {/* Video feed / Audio-only placeholder */}
       <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
-        {state === 'preview' && recordedBlob ? (
+        {!hasVideo ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white/10">
+              <Mic className="h-8 w-8 text-white/60" />
+            </div>
+            <span className="text-xs text-white/40">Audio only</span>
+          </div>
+        ) : state === 'preview' && recordedBlob ? (
           <video
             ref={previewRef}
             controls

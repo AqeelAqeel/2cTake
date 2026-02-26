@@ -75,9 +75,9 @@ Browser                  Action                    Service          Storage/DB
 
 [Open /review/{shareToken}]
   |
-  +------ SELECT session by share_token --------> [PostgREST] ----> sessions table
-  <------ session { title, context,                                  (public SELECT via RLS)
-  |        artifact_url, artifact_type,
+  +------ RPC get_session_by_token(token) ------> [PostgREST] ----> sessions table
+  <------ session { title, context,                                  (SECURITY DEFINER RPC,
+  |        artifact_url, artifact_type,                               bypasses RLS for anon)
   |        max_duration }
   |
   |  UI: show artifact preview + title + context
@@ -306,7 +306,7 @@ What lives where, and why.
 |-------|------|-------|
 | Frontend | Vite + React 19 + TypeScript | SPA, client-side routing |
 | Styling | Tailwind CSS v4 (`@tailwindcss/vite` plugin) | Design tokens in `src/index.css` |
-| State | Zustand | 3 stores: auth, session, recorder |
+| State | Zustand | 4 stores: auth, session, recorder, annotation |
 | Routing | React Router v7 | 5 routes, 2 public, 3 protected |
 | Auth | Supabase Auth (Google OAuth) | JWT, auto-refresh |
 | Database | Supabase PostgreSQL | RLS enforced, shared instance |
@@ -378,11 +378,13 @@ Auto-populated by a trigger on `auth.users` INSERT/UPDATE. When a user signs in 
 | status | text | `pending --> processing --> complete --> failed` |
 | created_at | timestamptz | Auto |
 
-### RLS Policies
-- **Sessions:** Owner full CRUD. Anyone can SELECT (needed for share_token lookup).
-- **Reviewers:** Anyone can INSERT. Owner can SELECT their session's reviewers.
-- **Recordings:** Anyone can INSERT/UPDATE. Owner can SELECT.
-- **Transcripts:** Anyone can INSERT/UPDATE. Owner can SELECT via recordings-->sessions join.
+### RLS Policies (post-migration 008/009)
+- **Sessions:** Owner full CRUD (`auth.uid() = owner_id`). No public SELECT — anonymous share-token lookup via `get_session_by_token()` RPC (SECURITY DEFINER, bypasses RLS).
+- **Reviewers:** Authenticated session owners can SELECT their reviewers. Anon can SELECT (needed for `.insert().select()` pattern) and INSERT.
+- **Recordings:** Authenticated session owners can SELECT and UPDATE. Anon can SELECT (needed for `.insert().select()`) and INSERT.
+- **Transcripts:** Authenticated session owners can SELECT via join. INSERT/UPDATE removed (edge functions use service_role key which bypasses RLS).
+- **Storage (artifacts):** Authenticated users can only read artifacts from their own sessions (join check). Anon can read all artifacts (paths are UUIDs, only discoverable via share-token RPC).
+- **Storage (recordings):** Anon can upload. Read via signed URLs (owner) or service_role key (edge functions).
 
 ### Entity Relationships
 
@@ -413,7 +415,7 @@ reviewers                   recordings --------> recordings bucket (video_url = 
 
 | Path | Component | Auth | Description |
 |------|-----------|------|-------------|
-| `/login` | Login | Public | Google OAuth sign-in page |
+| `/login` | LandingPage | Public | Marketing landing page with Google OAuth sign-in |
 | `/` | Dashboard | Protected | Session list with stats, search, sort |
 | `/new` | NewSession | Protected | Create session: upload artifact, set title/context/limit |
 | `/session/:id` | SessionDetail | Protected | View artifact + recordings + transcripts |
@@ -490,7 +492,7 @@ Each feature is named in plain English. For each: what it does, which files are 
 **Files touched:**
 | File | Role |
 |------|------|
-| `src/pages/Login.tsx` | Login page UI, calls `signInWithGoogle()` |
+| `src/pages/LandingPage.tsx` | Marketing landing page + Google OAuth sign-in |
 | `src/state/authStore.ts` | `signInWithGoogle()`, `initialize()`, `signOut()` |
 | `src/lib/supabase.ts` | Supabase client with auth config |
 | `src/App.tsx` | `ProtectedRoute` component checks auth state |
@@ -567,7 +569,8 @@ Each feature is named in plain English. For each: what it does, which files are 
 | File | Role |
 |------|------|
 | `src/pages/ReviewLink.tsx` | Orchestrates full flow: loading --> entry --> permissions --> recording --> uploading --> done |
-| `src/components/PermissionsGate.tsx` | Camera/mic permission request UI |
+| `src/components/OnboardingOverlay.tsx` | Multi-step onboarding: permissions + mic/camera test |
+| `src/components/OnboardingStepMicTest.tsx` | Mic test with camera toggle + skip option |
 | `src/components/Recorder.tsx` | Recording controls, timer, preview, send button |
 | `src/components/ArtifactViewer.tsx` | Displays PDF (iframe) or image |
 | `src/components/UploadProgress.tsx` | Upload progress bar, success/error states |
@@ -577,10 +580,10 @@ Each feature is named in plain English. For each: what it does, which files are 
 | `src/state/sessionStore.ts` | `fetchSessionByToken()` |
 
 **Technical implementation:**
-- `fetchSessionByToken(shareToken)` queries `sessions` where `share_token` matches (public RLS allows SELECT)
+- `fetchSessionByToken(shareToken)` calls `get_session_by_token()` RPC (SECURITY DEFINER, bypasses RLS for anonymous access)
 - `registerReviewer(sessionId, name)`: checks/creates `browser_uuid` in localStorage, inserts into `reviewers`
 - `PermissionsGate`: calls `navigator.mediaDevices.getUserMedia()` with constraints; catches `NotAllowedError` separately from device errors
-- `RecordingEngine.start(stream)`: creates `MediaRecorder` with vp9/opus codec, 2.5Mbps bitrate, 1s chunk interval
+- `RecordingEngine.start(stream)`: creates `MediaRecorder` — auto-detects video vs audio-only streams; video uses vp9/opus codec at 2.5Mbps, audio-only uses opus codec; 1s chunk interval
 - Timer: `setInterval` every 500ms, calls `onDurationUpdate` with elapsed seconds
 - Pause/resume: `MediaRecorder.pause()` / `.resume()`, tracks `pauseStart` and accumulates `pausedDuration`
 - Auto-stop: if `maxDuration` set, engine checks elapsed against limit every timer tick
@@ -696,27 +699,37 @@ Each feature is named in plain English. For each: what it does, which files are 
 │   ├── state/
 │   │   ├── authStore.ts            # Zustand: user, initialize(), signInWithGoogle(), signOut()
 │   │   ├── sessionStore.ts         # Zustand: sessions[], CRUD, recordings, transcripts
-│   │   └── recorderStore.ts        # Zustand: recorder state machine, blob, duration, progress
+│   │   ├── recorderStore.ts        # Zustand: recorder state machine, blob, duration, progress
+│   │   └── annotationStore.ts      # Zustand: annotation snapshots, tools, recording sync
 │   ├── pages/
-│   │   ├── Login.tsx               # Google OAuth login page
+│   │   ├── LandingPage.tsx         # Marketing landing page with Google OAuth sign-in
 │   │   ├── Dashboard.tsx           # Session list: search, sort, stats, table/grid views
 │   │   ├── NewSession.tsx          # Create session: drag-drop upload, form, success screen
 │   │   ├── SessionDetail.tsx       # View recordings + transcripts, split-panel layout
-│   │   └── ReviewLink.tsx          # Full reviewer flow: entry → permissions → record → send
+│   │   └── ReviewLink.tsx          # Full reviewer flow: entry → onboarding → record → send
 │   └── components/
 │       ├── Layout.tsx              # App shell: header (logo, avatar, signout) + <Outlet />
-│       ├── Recorder.tsx            # Recording UI: start/pause/stop/preview/send + timer + time bar
+│       ├── Recorder.tsx            # Recording UI: start/pause/stop/preview/send + timer (supports audio-only)
 │       ├── ArtifactViewer.tsx      # PDF iframe or image viewer (conditional render)
 │       ├── UploadProgress.tsx      # Upload progress bar + success/error states
 │       ├── TranscriptPanel.tsx     # Timestamped transcript with clickable segments
-│       ├── PermissionsGate.tsx     # Camera/mic permission request UI
-│       └── EditSessionModal.tsx    # Modal to edit session title/context
+│       ├── OnboardingOverlay.tsx   # Multi-step onboarding overlay (permissions + mic test)
+│       ├── OnboardingStepMicTest.tsx # Mic/camera test with camera toggle + skip option
+│       ├── CountdownOverlay.tsx    # 3-2-1 countdown before recording starts
+│       ├── EditSessionModal.tsx    # Modal to edit session title/context
+│       └── annotation/
+│           ├── AnnotationCanvas.tsx # Interactive annotation overlay for reviewer markup
+│           └── AnnotationPlayback.tsx # Annotation replay synced to video timeline
 ├── supabase/
 │   ├── migrations/
 │   │   ├── 001_initial.sql         # Full schema: sessions, reviewers, recordings, transcripts + RLS
 │   │   ├── 002_users_2ctake.sql    # users_2ctake table + auto-create trigger from auth.users
 │   │   ├── 003_max_duration.sql    # Adds max_duration column to sessions
-│   │   └── 006_url_import_columns.sql  # Adds source_url, source_type to sessions
+│   │   ├── 005_artifacts_storage_policies.sql # Storage bucket policies for artifacts
+│   │   ├── 006_url_import_columns.sql  # Adds source_url, source_type to sessions
+│   │   ├── 007_fix_reviewer_rls.sql    # Grants table-level permissions, baseline RLS
+│   │   ├── 008_fix_rls_data_leak.sql   # Tightens RLS: scoped SELECT, get_session_by_token() RPC
+│   │   └── 009_fix_storage_policies.sql # Tightens artifact storage: owner-only for auth, open for anon
 │   └── functions/
 │       ├── transcribe/
 │       │   └── index.ts            # Edge function: download video → Whisper API → store transcript
@@ -785,6 +798,10 @@ Each feature is named in plain English. For each: what it does, which files are 
 }
 ```
 
+### `annotationStore` (Zustand) — `src/state/annotationStore.ts`
+
+Manages annotation canvas state during recording: active tool, stroke history, snapshot capture synced to recording timeline. Snapshots are uploaded alongside the recording blob and replayed on the session detail page.
+
 ---
 
 ## 12. Environment Variables
@@ -810,7 +827,9 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 | Token | Value | Usage |
 |-------|-------|-------|
-| `brand-50` to `brand-900` | Indigo scale | Primary actions, links, highlights |
+| `brand-50` to `brand-900` | Indigo scale | Primary actions, links, highlights (app UI) |
+| `goblin-pink` | `#FF1493` | Landing page accent, annotations, branding |
+| `goblin-green` | `#1DB954` | Landing page accent, success states, branding |
 | `surface` | `#ffffff` | Card backgrounds |
 | `surface-secondary` | `#f8fafc` | Page background |
 | `surface-tertiary` | `#f1f5f9` | Subtle backgrounds, hover states |
@@ -833,7 +852,8 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 ### Shipped
 - PDF/image artifact upload
-- Mic + camera recording with pause/resume/re-record
+- Mic + camera recording with pause/resume/re-record (supports audio-only mode)
+- Camera toggle (reviewers can disable camera during onboarding)
 - Preview before send
 - Upload with progress tracking
 - Async transcription via OpenAI Whisper with timestamped segments
@@ -841,13 +861,16 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 - Session detail with video playback + clickable timestamped transcript
 - Google OAuth for senders
 - Anonymous reviewer flow (no login, name entry only)
+- Multi-step onboarding overlay with mic test (skip option)
 - Edit session title/context
 - Configurable recording time limit
 - Copy share link to clipboard
 - URL-based artifact import (Google Docs, Google Slides, generic web pages via Firecrawl)
+- Interactive annotation canvas for reviewer markup (synced to recording timeline)
+- Marketing landing page with scroll-reveal animations
+- Tightened RLS: scoped multi-tenant data access, SECURITY DEFINER RPC for share-token lookup
 
 ### NOT shipped (future)
-- Markup overlays on artifacts
 - Screen share recording
 - AI analysis / insights beyond transcription
 - Team features / multi-sender
@@ -928,7 +951,7 @@ When adding features, update this doc. Below are implementation guides for commo
 | Boundary | Protection | Implementation |
 |----------|-----------|----------------|
 | Sender authentication | Google OAuth JWT | Supabase Auth, `ProtectedRoute` component |
-| Session access control | RLS policies | Owner CRUD, public SELECT for share_token lookup |
+| Session access control | RLS policies + RPC | Owner CRUD, share-token lookup via `get_session_by_token()` SECURITY DEFINER RPC (no public SELECT) |
 | Recording privacy | Private storage bucket | Signed URLs (1hr expiry) for owner, service role for edge function |
 | Reviewer isolation | No auth, no cross-visibility | Each reviewer only sees their own recording flow |
 | Artifact access | Public bucket | Anyone with URL can view (by design — artifacts are shared content) |
@@ -953,5 +976,5 @@ When adding features, update this doc. Below are implementation guides for commo
 
 ---
 
-*Last updated: 2026-02-25 (added URL-based artifact import)*
+*Last updated: 2026-02-26 (RLS security hardening, landing page, audio-only recording, camera toggle, annotations, onboarding flow)*
 *Update this file whenever you make structural changes to the codebase.*

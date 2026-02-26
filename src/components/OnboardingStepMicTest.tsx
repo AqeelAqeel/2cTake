@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import {
   Camera,
+  CameraOff,
   Mic,
   AlertTriangle,
   RefreshCw,
@@ -11,6 +12,7 @@ import {
   Pause,
   Square,
   RotateCcw,
+  SkipForward,
 } from 'lucide-react'
 
 const TEST_PHRASE = "my epoch's epistemics are epic benedicts"
@@ -60,6 +62,7 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
   const [error, setError] = useState<string | null>(null)
   const [transcription, setTranscription] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
+  const [cameraEnabled, setCameraEnabled] = useState(true)
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -85,28 +88,37 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
     setStatus('requesting')
     setError(null)
 
+    // Stop any existing tracks before re-requesting
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop())
+      streamRef.current = null
+    }
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const constraints: MediaStreamConstraints = {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
         },
-        video: {
+      }
+      if (cameraEnabled) {
+        constraints.video = {
           width: { ideal: 1280 },
           height: { ideal: 720 },
           facingMode: 'user',
-        },
-      })
+        }
+      }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
       streamRef.current = stream
       setStatus('ready')
     } catch (err) {
       setStatus('denied')
       if (err instanceof DOMException && err.name === 'NotAllowedError') {
         setError(
-          'Permission denied. Please allow camera and microphone access in your browser settings, then try again.'
+          `Permission denied. Please allow ${cameraEnabled ? 'camera and microphone' : 'microphone'} access in your browser settings, then try again.`
         )
       } else {
-        setError('Could not access camera or microphone. Please check your device.')
+        setError(`Could not access ${cameraEnabled ? 'camera or microphone' : 'microphone'}. Please check your device.`)
       }
     }
   }
@@ -243,6 +255,11 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
 
   const isRecording = status === 'recording' || status === 'paused'
 
+  const handleSkipTest = () => {
+    const stream = streamRef.current
+    if (stream) onPass(stream)
+  }
+
   return (
     <div className="flex flex-col items-center gap-5">
       <img
@@ -253,7 +270,7 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
       />
 
       <div className="text-center">
-        <h2 className="text-xl font-bold text-text-primary">Mic & camera check</h2>
+        <h2 className="text-xl font-bold text-text-primary">Mic{cameraEnabled ? ' & camera' : ''} check</h2>
         <p className="mt-1 text-sm text-text-secondary">
           Grant permissions, then say the test phrase out loud.
         </p>
@@ -263,11 +280,31 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
       {(status === 'idle' || status === 'requesting' || status === 'denied') && (
         <div className="flex flex-col items-center gap-4 w-full">
           <div className="flex gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50">
-              <Camera className="h-6 w-6 text-brand-600" />
+            {/* Camera icon with toggle */}
+            <div className="flex flex-col items-center gap-1.5">
+              <div className={`flex h-12 w-12 items-center justify-center rounded-xl transition-colors ${cameraEnabled ? 'bg-brand-50' : 'bg-surface-tertiary'}`}>
+                {cameraEnabled ? (
+                  <Camera className="h-6 w-6 text-brand-600" />
+                ) : (
+                  <CameraOff className="h-6 w-6 text-text-muted" />
+                )}
+              </div>
+              <button
+                onClick={() => setCameraEnabled((v) => !v)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${cameraEnabled ? 'bg-brand-600' : 'bg-border'}`}
+                aria-label={cameraEnabled ? 'Disable camera' : 'Enable camera'}
+              >
+                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${cameraEnabled ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
+              </button>
+              <span className="text-[10px] text-text-muted">{cameraEnabled ? 'On' : 'Off'}</span>
             </div>
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50">
-              <Mic className="h-6 w-6 text-brand-600" />
+
+            <div className="flex flex-col items-center gap-1.5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50">
+                <Mic className="h-6 w-6 text-brand-600" />
+              </div>
+              <div className="h-5 w-9" /> {/* spacer to align with camera toggle */}
+              <span className="text-[10px] text-text-muted">Required</span>
             </div>
           </div>
 
@@ -338,13 +375,22 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
           {/* Transport controls */}
           <div className="flex items-center gap-2 w-full justify-center">
             {status === 'ready' && (
-              <button
-                onClick={startRecording}
-                className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors flex-1 justify-center"
-              >
-                <Volume2 className="h-4 w-4" />
-                Start test
-              </button>
+              <>
+                <button
+                  onClick={startRecording}
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors flex-1 justify-center"
+                >
+                  <Volume2 className="h-4 w-4" />
+                  Start test
+                </button>
+                <button
+                  onClick={handleSkipTest}
+                  className="inline-flex items-center justify-center rounded-xl bg-surface border border-border p-3 text-text-secondary hover:bg-surface-tertiary transition-colors"
+                  title="Skip test"
+                >
+                  <SkipForward className="h-4 w-4" />
+                </button>
+              </>
             )}
 
             {status === 'recording' && (
@@ -479,13 +525,22 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
             </div>
           )}
 
-          <button
-            onClick={retry}
-            className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Try again
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={retry}
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Try again
+            </button>
+            <button
+              onClick={handleSkipTest}
+              className="inline-flex items-center gap-2 rounded-xl bg-surface border border-border px-4 py-3 text-sm font-medium text-text-secondary hover:bg-surface-tertiary transition-colors"
+            >
+              <SkipForward className="h-4 w-4" />
+              Skip
+            </button>
+          </div>
         </div>
       )}
     </div>

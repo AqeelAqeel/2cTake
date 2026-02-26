@@ -1,5 +1,7 @@
-const MIME_TYPE = 'video/webm;codecs=vp9,opus'
-const FALLBACK_MIME = 'video/webm'
+const VIDEO_MIME_TYPE = 'video/webm;codecs=vp9,opus'
+const VIDEO_FALLBACK_MIME = 'video/webm'
+const AUDIO_MIME_TYPE = 'audio/webm;codecs=opus'
+const AUDIO_FALLBACK_MIME = 'audio/webm'
 
 export class RecordingEngine {
   private mediaRecorder: MediaRecorder | null = null
@@ -43,14 +45,15 @@ export class RecordingEngine {
     this.chunks = []
     this.pausedDuration = 0
 
-    const mimeType = MediaRecorder.isTypeSupported(MIME_TYPE)
-      ? MIME_TYPE
-      : FALLBACK_MIME
+    const hasVideo = stream.getVideoTracks().length > 0
+    const mimeType = hasVideo
+      ? (MediaRecorder.isTypeSupported(VIDEO_MIME_TYPE) ? VIDEO_MIME_TYPE : VIDEO_FALLBACK_MIME)
+      : (MediaRecorder.isTypeSupported(AUDIO_MIME_TYPE) ? AUDIO_MIME_TYPE : AUDIO_FALLBACK_MIME)
 
-    this.mediaRecorder = new MediaRecorder(stream, {
-      mimeType,
-      videoBitsPerSecond: 2_500_000,
-    })
+    const options: MediaRecorderOptions = { mimeType }
+    if (hasVideo) options.videoBitsPerSecond = 2_500_000
+
+    this.mediaRecorder = new MediaRecorder(stream, options)
 
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.chunks.push(e.data)
