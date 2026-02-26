@@ -178,7 +178,8 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
         const zoom = wasAtFit ? newFit : currentZoom
 
         fitZoomRef.current = newFit
-        setFitZoom(newFit)
+        // Update state only if meaningfully changed to avoid re-render loops
+        setFitZoom(prev => Math.abs(prev - newFit) > 0.001 ? newFit : prev)
 
         if (wasAtFit) canvas.setZoom(zoom)
 

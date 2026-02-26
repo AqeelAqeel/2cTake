@@ -55,14 +55,20 @@ export function useAnnotationGestures({
         }
       },
       onWheel: ({ delta: [, dy], event }) => {
+        const we = event as WheelEvent
+        // Only zoom with Ctrl/Cmd held (standard canvas behavior)
+        // Trackpad pinch generates ctrlKey wheel events, so pinch-to-zoom still works
+        if (!we.ctrlKey && !we.metaKey) return
         event.preventDefault()
         if (!canvas || !containerRef.current) return
+        // Ignore tiny deltas (noise / momentum tail)
+        if (Math.abs(dy) < 0.5) return
         const rect = containerRef.current.getBoundingClientRect()
         const factor = dy > 0 ? 0.95 : 1.05
         const newZoom = clamp(canvas.getZoom() * factor, minZoom, maxZoom)
         const pointer = new Point(
-          (event as WheelEvent).clientX - rect.left,
-          (event as WheelEvent).clientY - rect.top
+          we.clientX - rect.left,
+          we.clientY - rect.top
         )
         canvas.zoomToPoint(pointer, newZoom)
         lastZoomRef.current = newZoom
