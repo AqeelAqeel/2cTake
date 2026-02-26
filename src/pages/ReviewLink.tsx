@@ -251,7 +251,7 @@ export function ReviewLink() {
   }
 
   // Recording interface — artifact-first layout with floating controls
-  const hasVideo = recorderStore.mediaStream?.getVideoTracks()?.length > 0
+  const hasVideo = (recorderStore.mediaStream?.getVideoTracks()?.length ?? 0) > 0
   const isRecActive = recorderStore.state === 'recording' || recorderStore.state === 'paused'
 
   return (
