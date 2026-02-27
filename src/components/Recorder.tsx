@@ -19,9 +19,10 @@ interface RecorderProps {
   maxDuration?: number | null
   autoStart?: boolean
   compact?: boolean
+  recordingStream?: MediaStream | null
 }
 
-export function Recorder({ onSend, maxDuration, autoStart, compact }: RecorderProps) {
+export function Recorder({ onSend, maxDuration, autoStart, compact, recordingStream }: RecorderProps) {
   const {
     state,
     mediaStream,
@@ -54,7 +55,8 @@ export function Recorder({ onSend, maxDuration, autoStart, compact }: RecorderPr
   }, [recordedBlob, state])
 
   const startRecording = useCallback(() => {
-    if (!mediaStream) return
+    const streamToRecord = recordingStream ?? mediaStream
+    if (!streamToRecord) return
 
     const engine = new RecordingEngine()
     engineRef.current = engine
@@ -73,10 +75,10 @@ export function Recorder({ onSend, maxDuration, autoStart, compact }: RecorderPr
       setState('error')
     }
 
-    engine.start(mediaStream)
+    engine.start(streamToRecord)
     setState('recording')
     setRecordingStartTime(Date.now())
-  }, [mediaStream, maxDuration, setState, setRecordedBlob, setDuration, setRecordingStartTime])
+  }, [recordingStream, mediaStream, maxDuration, setState, setRecordedBlob, setDuration, setRecordingStartTime])
 
   const pauseRecording = () => {
     engineRef.current?.pause()
@@ -109,10 +111,10 @@ export function Recorder({ onSend, maxDuration, autoStart, compact }: RecorderPr
 
   // Auto-start recording when coming from countdown
   useEffect(() => {
-    if (autoStart && mediaStream && state === 'idle') {
+    if (autoStart && (recordingStream ?? mediaStream) && state === 'idle') {
       startRecording()
     }
-  }, [autoStart, mediaStream, state, startRecording])
+  }, [autoStart, recordingStream, mediaStream, state, startRecording])
 
   const isRecordingActive = state === 'recording' || state === 'paused'
   const hasVideo = mediaStream ? mediaStream.getVideoTracks().length > 0 : false

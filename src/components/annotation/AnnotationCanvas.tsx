@@ -13,9 +13,10 @@ interface AnnotationCanvasProps {
   url: string
   type: 'pdf' | 'image' | 'document'
   className?: string
+  onCanvasReady?: (lowerCanvas: HTMLCanvasElement, upperCanvas: HTMLCanvasElement) => void
 }
 
-export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvasProps) {
+export function AnnotationCanvas({ url, type, className = '', onCanvasReady }: AnnotationCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasElRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = useRef<FabricCanvas | null>(null)
@@ -136,6 +137,14 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
 
         canvas.renderAll()
         setLoading(false)
+
+        // Notify parent that canvas elements are ready for capture
+        if (canvasRef.current) {
+          onCanvasReady?.(
+            canvasRef.current.lowerCanvasEl,
+            (canvasRef.current as unknown as { upperCanvasEl: HTMLCanvasElement }).upperCanvasEl
+          )
+        }
       } catch (err) {
         console.error('Failed to load artifact:', err)
         setLoading(false)

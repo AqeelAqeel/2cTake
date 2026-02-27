@@ -10,6 +10,7 @@ import { Recorder } from '../components/Recorder'
 import { UploadProgress } from '../components/UploadProgress'
 import { OnboardingOverlay } from '../components/OnboardingOverlay'
 import { CountdownOverlay } from '../components/CountdownOverlay'
+import { createCompositeStream, type CompositeStreamResult } from '../lib/compositeStream'
 import { Video, Loader2, AlertCircle, Mic } from 'lucide-react'
 import type { Session } from '../types'
 
@@ -26,6 +27,8 @@ export function ReviewLink() {
   const [reviewerId, setReviewerId] = useState<string | null>(null)
   const [uploadStatus, setUploadStatus] = useState<'uploading' | 'success' | 'error'>('uploading')
   const [errorDetail, setErrorDetail] = useState<string | null>(null)
+  const [compositeResult, setCompositeResult] = useState<CompositeStreamResult | null>(null)
+  const canvasElsRef = useRef<{ lower: HTMLCanvasElement; upper: HTMLCanvasElement } | null>(null)
   const pipVideoRef = useRef<HTMLVideoElement>(null)
 
   // Connect PiP webcam to media stream when recording step renders
@@ -83,6 +86,41 @@ export function ReviewLink() {
     setStep('recording')
   }, [])
 
+  // Create composite stream when annotation canvas and webcam are both ready
+  const handleCanvasReady = useCallback((lower: HTMLCanvasElement, upper: HTMLCanvasElement) => {
+    canvasElsRef.current = { lower, upper }
+    const webcamStream = recorderStore.mediaStream
+    if (webcamStream) {
+      const result = createCompositeStream({
+        lowerCanvas: lower,
+        upperCanvas: upper,
+        webcamStream,
+      })
+      setCompositeResult(result)
+    }
+  }, [recorderStore.mediaStream])
+
+  // Fallback: create composite if webcam stream arrives after canvas is ready
+  useEffect(() => {
+    if (step !== 'recording' || compositeResult) return
+    const canvasEls = canvasElsRef.current
+    const webcamStream = recorderStore.mediaStream
+    if (!canvasEls || !webcamStream) return
+    const result = createCompositeStream({
+      lowerCanvas: canvasEls.lower,
+      upperCanvas: canvasEls.upper,
+      webcamStream,
+    })
+    setCompositeResult(result)
+  }, [step, recorderStore.mediaStream, compositeResult])
+
+  // Clean up composite stream
+  useEffect(() => {
+    return () => {
+      compositeResult?.destroy()
+    }
+  }, [compositeResult])
+
   const handleSend = useCallback(
     async (blob: Blob, _duration: number) => {
       if (!session || !reviewerId) return
@@ -111,6 +149,9 @@ export function ReviewLink() {
   )
 
   const handleRetryUpload = () => {
+    compositeResult?.destroy()
+    setCompositeResult(null)
+    canvasElsRef.current = null
     setStep('recording')
     recorderStore.reset()
   }
@@ -276,6 +317,7 @@ export function ReviewLink() {
             url={session.artifact_url}
             type={session.artifact_type}
             className="h-full w-full"
+            onCanvasReady={handleCanvasReady}
           />
         )}
 
@@ -306,7 +348,13 @@ export function ReviewLink() {
 
       {/* Compact recording controls */}
       <div className="shrink-0">
-        <Recorder onSend={handleSend} maxDuration={session?.max_duration} autoStart compact />
+        <Recorder
+          onSend={handleSend}
+          maxDuration={session?.max_duration}
+          autoStart={!!compositeResult}
+          recordingStream={compositeResult?.stream ?? null}
+          compact
+        />
       </div>
     </div>
   )
