@@ -6,6 +6,7 @@ import { Point } from 'fabric'
 interface UseAnnotationGesturesConfig {
   canvas: Canvas | null
   containerRef: React.RefObject<HTMLDivElement | null>
+  bgDimensionsRef: React.RefObject<{ width: number; height: number }>
   onZoomChange: (zoom: number) => void
   annotationEnabled: boolean
   activeTool: string
@@ -15,9 +16,50 @@ interface UseAnnotationGesturesConfig {
 
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max)
 
+/**
+ * Clamp viewport so the artifact can't be panned out of view.
+ * - If artifact (at zoom) is smaller than container → center it on that axis.
+ * - If larger → keep edges from pulling inward past container edges.
+ */
+function clampViewport(
+  canvas: Canvas,
+  container: HTMLDivElement,
+  dims: { width: number; height: number }
+) {
+  if (dims.width === 0 || dims.height === 0) return
+
+  const zoom = canvas.getZoom()
+  const artW = dims.width * zoom
+  const artH = dims.height * zoom
+  const cW = container.clientWidth
+  const cH = container.clientHeight
+  const vpt = canvas.viewportTransform!
+
+  if (artW <= cW) {
+    // Center horizontally
+    vpt[4] = (cW - artW) / 2
+  } else {
+    // Left edge can't go right of container left (vpt[4] <= 0)
+    // Right edge can't go left of container right (vpt[4] >= cW - artW)
+    vpt[4] = clamp(vpt[4], cW - artW, 0)
+  }
+
+  if (artH <= cH) {
+    // Center vertically
+    vpt[5] = (cH - artH) / 2
+  } else {
+    // Top edge can't go below container top (vpt[5] <= 0)
+    // Bottom edge can't go above container bottom (vpt[5] >= cH - artH)
+    vpt[5] = clamp(vpt[5], cH - artH, 0)
+  }
+
+  canvas.setViewportTransform(vpt)
+}
+
 export function useAnnotationGestures({
   canvas,
   containerRef,
+  bgDimensionsRef,
   onZoomChange,
   annotationEnabled,
   activeTool,
@@ -48,6 +90,7 @@ export function useAnnotationGestures({
         const rect = containerRef.current.getBoundingClientRect()
         const zoom = clamp(scale, minZoom, maxZoom)
         canvas.zoomToPoint(new Point(ox - rect.left, oy - rect.top), zoom)
+        clampViewport(canvas, containerRef.current, bgDimensionsRef.current)
         lastZoomRef.current = zoom
         onZoomChange(zoom)
       },
@@ -55,12 +98,13 @@ export function useAnnotationGestures({
         isPinching.current = false
       },
       onDrag: ({ delta: [dx, dy], touches, event, pinching }) => {
-        if (!canvas || pinching || isPinching.current) return
+        if (!canvas || !containerRef.current || pinching || isPinching.current) return
 
         // Two-finger drag always pans (touch)
         if (touches > 1) {
           event?.preventDefault()
           canvas.relativePan(new Point(dx, dy))
+          clampViewport(canvas, containerRef.current, bgDimensionsRef.current)
           canvas.renderAll()
           return
         }
@@ -74,6 +118,7 @@ export function useAnnotationGestures({
         if (canPan && touches <= 1) {
           event?.preventDefault()
           canvas.relativePan(new Point(dx, dy))
+          clampViewport(canvas, containerRef.current, bgDimensionsRef.current)
           canvas.renderAll()
         }
       },
@@ -94,6 +139,7 @@ export function useAnnotationGestures({
             we.clientY - rect.top
           )
           canvas.zoomToPoint(pointer, newZoom)
+          clampViewport(canvas, containerRef.current, bgDimensionsRef.current)
           lastZoomRef.current = newZoom
           onZoomChange(newZoom)
           return
@@ -102,6 +148,7 @@ export function useAnnotationGestures({
         // Regular scroll = pan the document
         event.preventDefault()
         canvas.relativePan(new Point(-dx, -dy))
+        clampViewport(canvas, containerRef.current, bgDimensionsRef.current)
         canvas.renderAll()
       },
     },

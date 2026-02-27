@@ -210,6 +210,7 @@ export function AnnotationCanvas({ url, type, className = '' }: AnnotationCanvas
   useAnnotationGestures({
     canvas: canvasRef.current,
     containerRef,
+    bgDimensionsRef,
     onZoomChange: handleZoomChange,
     annotationEnabled,
     activeTool,
