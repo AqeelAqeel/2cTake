@@ -9,6 +9,7 @@ export interface Session {
   max_duration: number | null
   source_url: string | null
   source_type: string | null
+  owner_display_name: string | null
   created_at: string
   recording_count?: number
 }

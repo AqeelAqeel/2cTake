@@ -20,9 +20,10 @@ interface RecorderProps {
   autoStart?: boolean
   compact?: boolean
   recordingStream?: MediaStream | null
+  senderName?: string | null
 }
 
-export function Recorder({ onSend, maxDuration, autoStart, compact, recordingStream }: RecorderProps) {
+export function Recorder({ onSend, maxDuration, autoStart, compact, recordingStream, senderName }: RecorderProps) {
   const {
     state,
     mediaStream,
@@ -254,7 +255,7 @@ export function Recorder({ onSend, maxDuration, autoStart, compact, recordingStr
                   className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
                 >
                   <Send className="h-3.5 w-3.5" />
-                  Send
+                  {senderName ? `Send to ${senderName}` : 'Send'}
                 </button>
               </>
             )}
@@ -273,7 +274,7 @@ export function Recorder({ onSend, maxDuration, autoStart, compact, recordingStr
                   className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
                 >
                   <Send className="h-3.5 w-3.5" />
-                  Send
+                  {senderName ? `Send to ${senderName}` : 'Send'}
                 </button>
               </>
             )}
@@ -433,7 +434,7 @@ export function Recorder({ onSend, maxDuration, autoStart, compact, recordingStr
               className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
             >
               <Send className="h-4 w-4" />
-              Send
+              {senderName ? `Send to ${senderName}` : 'Send'}
             </button>
           </>
         )}
@@ -452,7 +453,7 @@ export function Recorder({ onSend, maxDuration, autoStart, compact, recordingStr
               className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
             >
               <Send className="h-4 w-4" />
-              Send
+              {senderName ? `Send to ${senderName}` : 'Send'}
             </button>
           </>
         )}

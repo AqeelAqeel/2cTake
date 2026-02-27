@@ -163,6 +163,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
 
     const shareToken = crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+    const ownerDisplayName = (user.user_metadata?.full_name as string)?.split(' ')[0] ?? null
 
     const { data, error } = await supabase
       .from('sessions')
@@ -176,6 +177,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         max_duration: maxDuration,
         source_url: sourceUrl,
         source_type: sourceType,
+        owner_display_name: ownerDisplayName,
       })
       .select()
       .single()

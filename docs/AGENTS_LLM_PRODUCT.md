@@ -346,6 +346,7 @@ Auto-populated by a trigger on `auth.users` INSERT/UPDATE. When a user signs in 
 | max_duration | integer | Nullable. Seconds. Auto-stops recording if set |
 | source_url | text | Nullable. Original URL if imported via URL |
 | source_type | text | Nullable. `'google_docs'`, `'google_slides'`, `'firecrawl'`, or null |
+| owner_display_name | text | Nullable. Sender's first name from Google profile, stored at creation |
 | created_at | timestamptz | Auto |
 
 ### `reviewers`
@@ -569,7 +570,7 @@ Each feature is named in plain English. For each: what it does, which files are 
 **Files touched:**
 | File | Role |
 |------|------|
-| `src/pages/ReviewLink.tsx` | Orchestrates full flow: loading --> entry --> onboarding --> countdown --> recording --> uploading --> done. Artifact-first layout with floating controls |
+| `src/pages/ReviewLink.tsx` | Orchestrates full flow: loading --> briefing --> entry --> onboarding --> countdown --> recording --> uploading --> done. Artifact-first layout with floating controls |
 | `src/components/OnboardingOverlay.tsx` | Multi-step onboarding: permissions + mic/camera test |
 | `src/components/OnboardingStepMicTest.tsx` | Mic test with camera toggle + skip option |
 | `src/components/Recorder.tsx` | Recording controls, timer, preview, send button. Supports `compact` mode (thin horizontal bar, no video feed) |
@@ -745,7 +746,8 @@ Each feature is named in plain English. For each: what it does, which files are 
 │   │   ├── 006_url_import_columns.sql  # Adds source_url, source_type to sessions
 │   │   ├── 007_fix_reviewer_rls.sql    # Grants table-level permissions, baseline RLS
 │   │   ├── 008_fix_rls_data_leak.sql   # Tightens RLS: scoped SELECT, get_session_by_token() RPC
-│   │   └── 009_fix_storage_policies.sql # Tightens artifact storage: owner-only for auth, open for anon
+│   │   ├── 009_fix_storage_policies.sql # Tightens artifact storage: owner-only for auth, open for anon
+│   │   └── 010_owner_display_name.sql   # Adds owner_display_name to sessions for reviewer personalization
 │   └── functions/
 │       ├── transcribe/
 │       │   └── index.ts            # Edge function: download video → Whisper API → store transcript
@@ -992,5 +994,5 @@ When adding features, update this doc. Below are implementation guides for commo
 
 ---
 
-*Last updated: 2026-02-26 (Artifact-first recording layout, compact recorder mode, canvas drift fix, Ctrl+scroll zoom guard, annotation toolbar overlay)*
+*Last updated: 2026-02-27 (Reviewer briefing screen, sender name personalization, owner_display_name column)*
 *Update this file whenever you make structural changes to the codebase.*
