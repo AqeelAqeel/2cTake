@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useSessionStore } from '../state/sessionStore'
 import { ArtifactViewer } from '../components/ArtifactViewer'
@@ -10,8 +10,16 @@ import {
   Check,
   Loader2,
   Play,
+  Pause,
   Trash2,
   Video,
+  FileText,
+  PenLine,
+  MessageSquare,
+  Users,
+  Minus,
+  PanelLeft,
+  X,
 } from 'lucide-react'
 import { formatTimestamp } from '../lib/transcription'
 import type { Recording } from '../types'
@@ -43,17 +51,6 @@ function getInitials(name: string) {
     .join('')
     .toUpperCase()
     .slice(0, 2)
-}
-
-function relativeDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const days = Math.floor((now.getTime() - date.getTime()) / 86_400_000)
-  if (days === 0) return 'Today'
-  if (days === 1) return 'Yesterday'
-  if (days < 7) return `${days}d ago`
-  if (days < 30) return `${Math.floor(days / 7)}w ago`
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 // ── Status Badge ─────────────────────────────────────────────────────────────
@@ -112,7 +109,7 @@ function StatusBadge({ status }: { status: string }) {
   const c = config[status] || config.pending
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium ${c.bg} ${c.text}`}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium ${c.bg} ${c.text}`}
     >
       <span
         className={`w-1.5 h-1.5 rounded-full ${c.dot} ${c.pulse ? 'animate-pulse-dot' : ''}`}
@@ -122,9 +119,72 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-// ── Recording Card ───────────────────────────────────────────────────────────
+// ── Sidebar Reviewer Card ────────────────────────────────────────────────────
 
-function RecordingCard({
+function SidebarReviewerCard({
+  recording,
+  isSelected,
+  index,
+  onClick,
+}: {
+  recording: Recording
+  isSelected: boolean
+  index: number
+  onClick: () => void
+}) {
+  const name = recording.reviewer?.name || 'Anonymous'
+  const colors = getAvatarColor(name)
+
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl w-full text-left transition-all ${
+        isSelected
+          ? 'bg-white shadow-[0_1px_4px_rgba(0,0,0,0.08)] border border-border/60'
+          : 'border border-transparent hover:bg-white/60'
+      }`}
+    >
+      {/* Numbered avatar */}
+      <div className="relative shrink-0">
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white tracking-wide"
+          style={{
+            background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`,
+          }}
+        >
+          {getInitials(name)}
+        </div>
+        <div
+          className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+          style={{
+            background: colors[0],
+            boxShadow: '0 0 0 2px var(--color-surface-tertiary)',
+          }}
+        >
+          {index + 1}
+        </div>
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[12px] font-semibold text-text-primary truncate">
+            {name}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          <span className="text-[11px] text-text-muted">
+            {formatTimestamp(recording.duration)}
+          </span>
+          <StatusBadge status={recording.status} />
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// ── Mobile Reviewer Pill ─────────────────────────────────────────────────────
+
+function MobileReviewerPill({
   recording,
   isSelected,
   onClick,
@@ -139,54 +199,23 @@ function RecordingCard({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-3 px-3.5 py-3 rounded-xl w-full text-left transition-all ${
+      className={`flex items-center gap-2 px-3 py-2 rounded-full shrink-0 transition-all ${
         isSelected
-          ? 'border border-brand-300/40 bg-brand-50/50'
-          : 'border border-transparent hover:bg-surface-tertiary'
+          ? 'bg-white shadow-[0_1px_4px_rgba(0,0,0,0.1)] border border-border/60'
+          : 'border border-transparent bg-white/50'
       }`}
     >
-      {/* Avatar */}
       <div
-        className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-xs font-bold text-white tracking-wide"
+        className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
         style={{
           background: `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`,
         }}
       >
         {getInitials(name)}
       </div>
-
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[13px] font-medium text-text-primary truncate">
-            {name}
-          </span>
-          <StatusBadge status={recording.status} />
-        </div>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs text-text-muted">
-            {formatTimestamp(recording.duration)}
-          </span>
-          <span className="text-[10px] text-border">&middot;</span>
-          <span className="text-xs text-text-muted">
-            {relativeDate(recording.created_at)}
-          </span>
-        </div>
-      </div>
-
-      {/* Play indicator */}
-      {recording.status === 'complete' && (
-        <div
-          className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-            isSelected ? 'bg-brand-100' : 'bg-surface-tertiary'
-          }`}
-        >
-          <Play
-            className={`w-2.5 h-2.5 fill-current ${
-              isSelected ? 'text-brand-600' : 'text-text-muted'
-            }`}
-          />
-        </div>
-      )}
+      <span className="text-[12px] font-medium text-text-primary whitespace-nowrap">
+        {name}
+      </span>
     </button>
   )
 }
@@ -202,10 +231,13 @@ function EmptyReviews({ shareToken }: { shareToken: string }) {
       <div className="w-16 h-16 rounded-full bg-gradient-to-br from-brand-50 to-brand-100 flex items-center justify-center mb-4">
         <Video className="w-7 h-7 text-brand-500" />
       </div>
-      <h3 className="text-base font-semibold text-text-primary">
+      <h3
+        className="text-lg font-semibold text-text-primary"
+        style={{ fontFamily: 'var(--font-serif)' }}
+      >
         No reviews yet
       </h3>
-      <p className="text-[13px] text-text-secondary mt-1.5 max-w-[280px] leading-relaxed">
+      <p className="text-[13px] text-text-secondary mt-2 max-w-[300px] leading-relaxed">
         Share the review link to start collecting feedback on this artifact.
       </p>
       <button
@@ -214,7 +246,7 @@ function EmptyReviews({ shareToken }: { shareToken: string }) {
           setCopied(true)
           setTimeout(() => setCopied(false), 2000)
         }}
-        className="mt-5 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 text-white text-[13px] font-medium hover:bg-brand-700 transition-colors shadow-[0_2px_8px_rgba(79,70,229,0.25)]"
+        className="mt-6 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-600 text-white text-[13px] font-medium hover:bg-brand-700 transition-colors shadow-[0_2px_8px_rgba(79,70,229,0.25)]"
       >
         <Copy className="w-3.5 h-3.5" />
         {copied ? 'Copied!' : 'Copy review link'}
@@ -223,7 +255,225 @@ function EmptyReviews({ shareToken }: { shareToken: string }) {
   )
 }
 
+// ── Custom Video Player ──────────────────────────────────────────────────────
+
+function VideoPlayer({
+  videoRef,
+  recording,
+  currentTime,
+  onTimeUpdate,
+}: {
+  videoRef: React.RefObject<HTMLVideoElement | null>
+  recording: Recording
+  currentTime: number
+  onTimeUpdate: () => void
+}) {
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [duration, setDuration] = useState(recording.duration || 0)
+  const progressRef = useRef<HTMLDivElement>(null)
+
+  const togglePlay = useCallback(() => {
+    if (!videoRef.current) return
+    if (videoRef.current.paused) {
+      videoRef.current.play()
+    } else {
+      videoRef.current.pause()
+    }
+  }, [videoRef])
+
+  const handleSeek = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!videoRef.current || !progressRef.current) return
+      const rect = progressRef.current.getBoundingClientRect()
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+      videoRef.current.currentTime = ratio * (videoRef.current.duration || duration)
+    },
+    [videoRef, duration]
+  )
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+
+  return (
+    <div className="relative group bg-black rounded-xl sm:rounded-2xl overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.15)]">
+      <video
+        ref={videoRef}
+        key={recording.id}
+        src={recording.video_url}
+        className="aspect-video w-full block"
+        onTimeUpdate={() => {
+          onTimeUpdate()
+          setIsPlaying(!videoRef.current?.paused)
+        }}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onLoadedMetadata={() => {
+          if (videoRef.current) setDuration(videoRef.current.duration)
+        }}
+        onClick={togglePlay}
+        playsInline
+      />
+
+      {/* Play/pause overlay */}
+      <div
+        className={`absolute inset-0 flex items-center justify-center transition-opacity duration-200 cursor-pointer ${
+          isPlaying ? 'opacity-0 hover:opacity-100' : 'opacity-100'
+        }`}
+        style={{
+          background: isPlaying
+            ? 'transparent'
+            : 'radial-gradient(circle, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.15) 100%)',
+        }}
+        onClick={togglePlay}
+      >
+        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/20">
+          {isPlaying ? (
+            <Pause className="w-5 h-5 sm:w-6 sm:h-6 text-white fill-white" />
+          ) : (
+            <Play className="w-5 h-5 sm:w-6 sm:h-6 text-white fill-white ml-0.5" />
+          )}
+        </div>
+      </div>
+
+      {/* Bottom controls overlay */}
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent pt-8 pb-0">
+        {/* Time display */}
+        <div className="flex items-center justify-between px-3 sm:px-4 pb-2">
+          <span className="text-[11px] sm:text-[12px] font-mono text-white/80 tabular-nums tracking-wide">
+            {formatTimestamp(currentTime)}
+            <span className="text-white/40 mx-1">/</span>
+            {formatTimestamp(duration)}
+          </span>
+        </div>
+
+        {/* Progress bar */}
+        <div
+          ref={progressRef}
+          className="h-[5px] cursor-pointer group/progress"
+          onClick={handleSeek}
+        >
+          <div className="h-full relative">
+            <div className="absolute inset-0 bg-white/20" />
+            <div
+              className="absolute inset-y-0 left-0 bg-brand-500 transition-[width] duration-75"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Markups Tab ──────────────────────────────────────────────────────────────
+
+function MarkupsPanel({
+  annotations,
+  onTimestampClick,
+  currentTime,
+}: {
+  annotations: { timestamp: number; canvasJSON: string }[]
+  onTimestampClick: (seconds: number) => void
+  currentTime: number
+}) {
+  if (annotations.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-[var(--color-timestamp)]">
+        <PenLine className="h-8 w-8" />
+        <p className="text-sm" style={{ fontFamily: 'var(--font-serif)' }}>
+          No markups in this review
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col">
+      {annotations.map((snap, i) => {
+        const isActive =
+          currentTime >= snap.timestamp &&
+          (i === annotations.length - 1 || currentTime < annotations[i + 1].timestamp)
+        return (
+          <button
+            key={i}
+            onClick={() => onTimestampClick(snap.timestamp)}
+            className="flex items-center gap-4 sm:gap-5 w-full text-left transition-all"
+            style={{
+              padding: '14px 16px',
+              borderLeft: isActive
+                ? '3px solid var(--color-brand-500)'
+                : '3px solid transparent',
+              backgroundColor: isActive
+                ? 'var(--color-warm-highlight)'
+                : 'transparent',
+            }}
+          >
+            <span
+              className="shrink-0 text-[12px] font-medium font-mono tabular-nums"
+              style={{
+                color: isActive
+                  ? 'var(--color-brand-600)'
+                  : 'var(--color-timestamp)',
+              }}
+            >
+              {formatTimestamp(snap.timestamp)}
+            </span>
+            <div className="flex items-center gap-2.5">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{
+                  backgroundColor: isActive
+                    ? 'var(--color-brand-100)'
+                    : 'var(--color-surface-tertiary)',
+                }}
+              >
+                <PenLine
+                  className="w-3.5 h-3.5"
+                  style={{
+                    color: isActive
+                      ? 'var(--color-brand-600)'
+                      : 'var(--color-text-muted)',
+                  }}
+                />
+              </div>
+              <span
+                className="text-[14px] transition-colors"
+                style={{
+                  fontFamily: 'var(--font-serif)',
+                  color: isActive
+                    ? 'var(--color-text-primary)'
+                    : 'var(--color-text-secondary)',
+                  fontWeight: isActive ? 500 : 400,
+                }}
+              >
+                Annotation {i + 1}
+              </span>
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Notes Tab ────────────────────────────────────────────────────────────────
+
+function NotesPanel() {
+  return (
+    <div className="flex flex-col items-center gap-3 py-16 text-[var(--color-timestamp)]">
+      <MessageSquare className="h-8 w-8" />
+      <p className="text-sm" style={{ fontFamily: 'var(--font-serif)' }}>
+        Notes coming soon
+      </p>
+      <p className="text-xs text-text-muted max-w-[240px] text-center leading-relaxed">
+        You&rsquo;ll be able to jot down thoughts and action items for each review.
+      </p>
+    </div>
+  )
+}
+
 // ── Main Component ───────────────────────────────────────────────────────────
+
+type TabKey = 'transcript' | 'markups' | 'notes'
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>()
@@ -242,14 +492,11 @@ export function SessionDetail() {
   } = useSessionStore()
 
   const [copied, setCopied] = useState(false)
-  const [selectedRecording, setSelectedRecording] = useState<string | null>(
-    null
-  )
+  const [selectedRecording, setSelectedRecording] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
-  const [activeTab, setActiveTab] = useState<'transcript' | 'info'>(
-    'transcript'
-  )
+  const [activeTab, setActiveTab] = useState<TabKey>('transcript')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -316,55 +563,109 @@ export function SessionDetail() {
     ? annotations[selectedRecording] ?? []
     : []
 
+  const activeName = activeRecording?.reviewer?.name || 'Anonymous'
+  const activeColors = getAvatarColor(activeName)
+
+  const tabs: { key: TabKey; label: string; icon: typeof FileText; count?: number }[] = [
+    { key: 'transcript', label: 'Transcript', icon: FileText },
+    { key: 'markups', label: 'Markups', icon: PenLine, count: activeAnnotations.length },
+    { key: 'notes', label: 'Notes', icon: MessageSquare },
+  ]
+
   return (
     <div className="flex h-full animate-slide-in">
-      {/* ── Left: Artifact Viewer ── */}
-      <div className="flex-1 flex flex-col min-w-0 p-5 pr-2.5">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-4 shrink-0">
+      {/* ── Mobile sidebar overlay ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/30 backdrop-blur-sm md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* ── Left Sidebar (desktop always, mobile as drawer) ── */}
+      <div
+        className={`
+          fixed inset-y-0 left-0 z-50 w-[280px] border-r border-border/60 flex flex-col bg-surface-tertiary/95 backdrop-blur-xl shrink-0
+          transition-transform duration-200 ease-out
+          md:static md:translate-x-0 md:z-auto md:bg-surface-tertiary/50 md:backdrop-blur-none
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+      >
+        {/* Header with back + title */}
+        <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-border/40 shrink-0">
           <button
-            onClick={() => navigate('/')}
-            className="w-[34px] h-[34px] rounded-[10px] border border-border bg-white flex items-center justify-center shrink-0 hover:bg-surface-tertiary transition-colors"
+            onClick={() => {
+              setSidebarOpen(false)
+              navigate('/')
+            }}
+            className="w-8 h-8 rounded-lg border border-border/60 bg-white flex items-center justify-center shrink-0 hover:bg-surface-tertiary transition-colors"
           >
-            <ArrowLeft className="w-4 h-4 text-text-secondary" />
+            <ArrowLeft className="w-3.5 h-3.5 text-text-secondary" />
           </button>
           <div className="flex-1 min-w-0">
-            <h2 className="text-[17px] font-bold text-text-primary truncate">
+            <h2 className="text-[13px] font-bold text-text-primary truncate">
               {currentSession.title}
             </h2>
             {currentSession.context && (
-              <p className="text-xs text-text-secondary truncate mt-0.5">
+              <p className="text-[10px] text-text-muted truncate mt-0.5">
                 {currentSession.context}
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={copyLink}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-surface-tertiary transition-colors"
+              className="rounded-lg p-1.5 text-text-muted hover:bg-white hover:text-text-secondary transition-colors"
+              title="Copy share link"
             >
               {copied ? (
-                <>
-                  <Check className="w-3.5 h-3.5 text-emerald-600" /> Copied
-                </>
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
               ) : (
-                <>
-                  <Copy className="w-3.5 h-3.5" /> Share
-                </>
+                <Copy className="w-3.5 h-3.5" />
               )}
             </button>
             <button
               onClick={() => setShowDeleteConfirm(true)}
-              className="rounded-lg border border-border bg-white p-1.5 text-text-muted hover:text-red-500 hover:border-red-200 transition-colors"
+              className="rounded-lg p-1.5 text-text-muted hover:text-red-500 hover:bg-white transition-colors"
               title="Delete"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
+            {/* Close button on mobile */}
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="rounded-lg p-1.5 text-text-muted hover:bg-white hover:text-text-secondary transition-colors md:hidden"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
 
-        {/* Artifact */}
-        <div className="flex-1 min-h-0 rounded-2xl overflow-hidden border border-border bg-surface-tertiary relative">
+        {/* Reviewer list */}
+        <div className="px-3 pt-3 pb-2 shrink-0">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-text-muted uppercase tracking-[0.06em] mb-2 pl-1">
+            <Users className="w-3 h-3" />
+            Reviewers ({recordings.length})
+          </div>
+          <div className="flex flex-col gap-0.5">
+            {recordings.map((rec, i) => (
+              <SidebarReviewerCard
+                key={rec.id}
+                recording={rec}
+                isSelected={selectedRecording === rec.id}
+                index={i}
+                onClick={() => {
+                  setSelectedRecording(rec.id)
+                  setCurrentTime(0)
+                  setSidebarOpen(false)
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Compact artifact preview */}
+        <div className="flex-1 min-h-0 mx-3 mb-2 rounded-xl overflow-hidden border border-border/40 bg-white relative">
           <ArtifactViewer
             url={currentSession.artifact_url}
             type={currentSession.artifact_type}
@@ -379,129 +680,148 @@ export function SessionDetail() {
             />
           )}
         </div>
-      </div>
 
-      {/* ── Right: Reviews Panel ── */}
-      <div className="w-[420px] border-l border-surface-tertiary flex flex-col bg-white overflow-hidden shrink-0">
-        {recordings.length === 0 ? (
-          <EmptyReviews shareToken={currentSession.share_token} />
-        ) : (
-          <>
-            {/* Recordings list */}
-            <div className="px-4 pt-4 pb-2 border-b border-surface-tertiary shrink-0">
-              <div className="text-[11px] font-semibold text-text-muted uppercase tracking-[0.06em] mb-2.5 pl-0.5">
-                Reviews ({recordings.length})
+        {/* Bottom bar: zoom + active reviewer */}
+        {activeRecording && (
+          <div className="px-3 pb-3 shrink-0">
+            <div
+              className="flex items-center justify-between rounded-xl bg-white px-3 py-2"
+              style={{ border: '1px solid var(--color-warm-border)' }}
+            >
+              <div className="flex items-center gap-1.5 text-[11px] text-text-muted">
+                <Minus className="w-3 h-3" />
+                <span className="font-mono font-medium text-text-secondary">100%</span>
               </div>
-              <div className="flex flex-col gap-0.5">
-                {recordings.map((rec) => (
-                  <RecordingCard
-                    key={rec.id}
-                    recording={rec}
-                    isSelected={selectedRecording === rec.id}
-                    onClick={() => {
-                      setSelectedRecording(rec.id)
-                      setCurrentTime(0)
-                    }}
-                  />
-                ))}
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
+                  style={{
+                    background: `linear-gradient(135deg, ${activeColors[0]}, ${activeColors[1]})`,
+                  }}
+                >
+                  {getInitials(activeName)}
+                </div>
+                <span className="text-[12px] font-medium text-text-primary">
+                  {activeName}
+                </span>
               </div>
             </div>
+          </div>
+        )}
+      </div>
 
-            {/* Video + Transcript */}
-            {activeRecording && (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Video */}
-                <div className="px-4 pt-4 shrink-0">
-                  <div className="overflow-hidden rounded-xl border border-border bg-black">
-                    <video
-                      ref={videoRef}
-                      key={activeRecording.id}
-                      src={activeRecording.video_url}
-                      controls
-                      className="aspect-video w-full"
-                      onTimeUpdate={handleTimeUpdate}
-                    />
-                  </div>
-                </div>
+      {/* ── Right: Main Content ── */}
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+        {/* Mobile header bar */}
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/40 shrink-0 md:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="w-8 h-8 rounded-lg border border-border/60 bg-white flex items-center justify-center shrink-0"
+          >
+            <PanelLeft className="w-3.5 h-3.5 text-text-secondary" />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-[13px] font-bold text-text-primary truncate">
+              {currentSession.title}
+            </h2>
+          </div>
+          <button
+            onClick={copyLink}
+            className="rounded-lg p-1.5 text-text-muted hover:bg-surface-tertiary transition-colors"
+          >
+            {copied ? (
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
+          </button>
+        </div>
 
-                {/* Tabs */}
-                <div className="flex gap-0 px-4 pt-3 border-b border-surface-tertiary shrink-0">
-                  {(
-                    [
-                      { key: 'transcript' as const, label: 'Transcript' },
-                      { key: 'info' as const, label: 'Details' },
-                    ] as const
-                  ).map((tab) => (
-                    <button
-                      key={tab.key}
-                      onClick={() => setActiveTab(tab.key)}
-                      className={`px-4 pb-3 pt-2 text-[13px] transition-all border-b-2 ${
+        {/* Mobile reviewer pills (horizontal scroll) */}
+        {recordings.length > 1 && (
+          <div className="flex gap-2 px-3 py-2 overflow-x-auto shrink-0 md:hidden" style={{ backgroundColor: 'var(--color-surface-warm)' }}>
+            {recordings.map((rec) => (
+              <MobileReviewerPill
+                key={rec.id}
+                recording={rec}
+                isSelected={selectedRecording === rec.id}
+                onClick={() => {
+                  setSelectedRecording(rec.id)
+                  setCurrentTime(0)
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {recordings.length === 0 ? (
+          <EmptyReviews shareToken={currentSession.share_token} />
+        ) : activeRecording ? (
+          <>
+            {/* Video player */}
+            <div className="px-3 sm:px-6 pt-3 sm:pt-5 pb-1 shrink-0">
+              <VideoPlayer
+                videoRef={videoRef}
+                recording={activeRecording}
+                currentTime={currentTime}
+                onTimeUpdate={handleTimeUpdate}
+              />
+            </div>
+
+            {/* Tabs */}
+            <div className="flex gap-0 px-3 sm:px-6 pt-3 sm:pt-4 border-b border-border/40 shrink-0 overflow-x-auto">
+              {tabs.map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-5 pb-3 pt-1 text-[12px] sm:text-[13px] transition-all border-b-2 whitespace-nowrap ${
+                    activeTab === tab.key
+                      ? 'font-semibold text-text-primary border-brand-600'
+                      : 'font-normal text-text-muted border-transparent hover:text-text-secondary'
+                  }`}
+                >
+                  <tab.icon className="w-3.5 h-3.5" />
+                  {tab.label}
+                  {tab.count !== undefined && tab.count > 0 && (
+                    <span
+                      className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
                         activeTab === tab.key
-                          ? 'font-semibold text-brand-600 border-brand-600'
-                          : 'font-normal text-text-muted border-transparent hover:text-text-secondary'
+                          ? 'bg-brand-100 text-brand-700'
+                          : 'bg-surface-tertiary text-text-muted'
                       }`}
                     >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Tab content */}
-                <div className="flex-1 overflow-y-auto p-2 pb-4">
-                  {activeTab === 'transcript' ? (
-                    <TranscriptPanel
-                      transcript={activeTranscript}
-                      onTimestampClick={handleTimestampClick}
-                      currentTime={currentTime}
-                    />
-                  ) : (
-                    <div className="px-2 pt-4 grid gap-4">
-                      {[
-                        {
-                          label: 'Reviewer',
-                          value:
-                            activeRecording.reviewer?.name || 'Anonymous',
-                        },
-                        {
-                          label: 'Duration',
-                          value: formatTimestamp(activeRecording.duration),
-                        },
-                        {
-                          label: 'Recorded',
-                          value: new Date(
-                            activeRecording.created_at
-                          ).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          }),
-                        },
-                        {
-                          label: 'Status',
-                          value: activeRecording.status,
-                        },
-                        {
-                          label: 'Transcript',
-                          value: activeTranscript?.status || '—',
-                        },
-                      ].map((item) => (
-                        <div key={item.label}>
-                          <div className="text-[11px] font-semibold text-text-muted uppercase tracking-[0.05em] mb-1">
-                            {item.label}
-                          </div>
-                          <div className="text-sm text-text-primary">
-                            {item.value}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                      {tab.count}
+                    </span>
                   )}
-                </div>
+                </button>
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div
+              className="flex-1 overflow-y-auto warm-scroll"
+              style={{ backgroundColor: 'var(--color-surface-warm)' }}
+            >
+              <div className="py-2">
+                {activeTab === 'transcript' && (
+                  <TranscriptPanel
+                    transcript={activeTranscript}
+                    onTimestampClick={handleTimestampClick}
+                    currentTime={currentTime}
+                  />
+                )}
+                {activeTab === 'markups' && (
+                  <MarkupsPanel
+                    annotations={activeAnnotations}
+                    onTimestampClick={handleTimestampClick}
+                    currentTime={currentTime}
+                  />
+                )}
+                {activeTab === 'notes' && <NotesPanel />}
               </div>
-            )}
+            </div>
           </>
-        )}
+        ) : null}
       </div>
 
       {/* Delete confirmation */}
@@ -524,7 +844,8 @@ export function SessionDetail() {
             <div className="mt-6 flex gap-3">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 rounded-xl border border-border bg-white py-2.5 text-sm font-medium text-text-primary hover:bg-surface-tertiary transition-colors"
+                className="flex-1 rounded-xl border bg-white py-2.5 text-sm font-medium text-text-primary hover:bg-surface-tertiary transition-colors"
+                style={{ borderColor: 'var(--color-warm-border)' }}
               >
                 Cancel
               </button>

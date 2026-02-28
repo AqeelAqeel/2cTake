@@ -25,24 +25,29 @@ export function TranscriptPanel({
 
   if (!transcript) {
     return (
-      <div className="flex flex-col items-center gap-3 py-8 text-text-muted">
+      <div className="flex flex-col items-center gap-3 py-16 text-[var(--color-timestamp)]">
         <FileText className="h-8 w-8" />
-        <p className="text-sm">No transcript available yet</p>
+        <p className="text-sm" style={{ fontFamily: 'var(--font-serif)' }}>
+          No transcript available yet
+        </p>
       </div>
     )
   }
 
   if (transcript.status === 'pending' || transcript.status === 'processing') {
     return (
-      <div className="flex flex-col items-center gap-3 py-8">
+      <div className="flex flex-col items-center gap-3 py-16">
         <div className="flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
         </div>
         <div className="text-center">
-          <p className="text-[13px] font-medium text-text-primary">
+          <p
+            className="text-[15px] font-medium text-text-primary"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
             Generating transcript&hellip;
           </p>
-          <p className="text-xs text-text-muted mt-1">
+          <p className="text-xs text-[var(--color-timestamp)] mt-1.5">
             This usually takes a minute or two
           </p>
         </div>
@@ -52,15 +57,18 @@ export function TranscriptPanel({
 
   if (transcript.status === 'failed') {
     return (
-      <div className="flex flex-col items-center gap-3 py-8">
-        <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center">
+      <div className="flex flex-col items-center gap-3 py-16">
+        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
           <X className="w-4 h-4 text-red-500" />
         </div>
         <div className="text-center">
-          <p className="text-[13px] font-medium text-text-primary">
+          <p
+            className="text-[15px] font-medium text-text-primary"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
             Transcription failed
           </p>
-          <p className="text-xs text-text-muted mt-1">
+          <p className="text-xs text-[var(--color-timestamp)] mt-1.5">
             The audio couldn&rsquo;t be processed
           </p>
         </div>
@@ -73,22 +81,27 @@ export function TranscriptPanel({
   if (!segments || segments.length === 0) {
     if (transcript.text) {
       return (
-        <div className="p-3">
-          <p className="text-sm leading-relaxed text-text-secondary whitespace-pre-wrap">
+        <div className="p-6">
+          <p
+            className="text-[15px] leading-[1.75] text-text-primary whitespace-pre-wrap"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
             {transcript.text}
           </p>
         </div>
       )
     }
     return (
-      <div className="flex flex-col items-center gap-3 py-8 text-text-muted">
-        <p className="text-[13px]">No transcript available</p>
+      <div className="flex flex-col items-center gap-3 py-16 text-[var(--color-timestamp)]">
+        <p className="text-sm" style={{ fontFamily: 'var(--font-serif)' }}>
+          No transcript available
+        </p>
       </div>
     )
   }
 
   return (
-    <div ref={containerRef} className="flex flex-col gap-0.5">
+    <div ref={containerRef} className="flex flex-col">
       {segments.map((seg, i) => {
         const isActive = currentTime >= seg.start && currentTime < seg.end
         return (
@@ -96,23 +109,38 @@ export function TranscriptPanel({
             key={i}
             ref={isActive ? activeRef : null}
             onClick={() => onTimestampClick?.(seg.start)}
-            className={`flex gap-2.5 px-3.5 py-2.5 rounded-[10px] w-full text-left transition-all ${
-              isActive ? 'bg-brand-50' : 'hover:bg-surface-tertiary'
-            }`}
+            className="flex gap-5 w-full text-left transition-all group"
+            style={{
+              padding: '16px 24px',
+              borderLeft: isActive
+                ? '3px solid var(--color-brand-500)'
+                : '3px solid transparent',
+              backgroundColor: isActive
+                ? 'var(--color-warm-highlight)'
+                : 'transparent',
+            }}
           >
             <span
-              className={`shrink-0 text-[11px] font-semibold font-mono pt-0.5 min-w-[36px] transition-colors ${
-                isActive ? 'text-brand-600' : 'text-text-muted'
-              }`}
+              className="shrink-0 text-[12px] font-medium font-mono pt-[3px] min-w-[42px] transition-colors tabular-nums"
+              style={{
+                color: isActive
+                  ? 'var(--color-brand-600)'
+                  : 'var(--color-timestamp)',
+              }}
             >
               {formatTimestamp(seg.start)}
             </span>
             <span
-              className={`text-[13px] leading-relaxed transition-all ${
-                isActive
-                  ? 'text-text-primary font-medium'
-                  : 'text-text-secondary'
-              }`}
+              className="transition-all"
+              style={{
+                fontFamily: 'var(--font-serif)',
+                fontSize: '15px',
+                lineHeight: '1.7',
+                color: isActive
+                  ? 'var(--color-text-primary)'
+                  : 'var(--color-text-secondary)',
+                fontWeight: isActive ? 500 : 400,
+              }}
             >
               {seg.text}
             </span>

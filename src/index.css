@@ -24,7 +24,12 @@
   --color-text-primary: #0f172a;
   --color-text-secondary: #475569;
   --color-text-muted: #94a3b8;
+  --color-surface-warm: #FAF8F5;
+  --color-warm-highlight: #F0E9DF;
+  --color-warm-border: #E8DFD3;
+  --color-timestamp: #9C8B7A;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
 }
 
 html, body, #root {
@@ -114,4 +119,144 @@ html.landing-smooth {
     linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
   background-size: 60px 60px;
+}
+
+/* Feedback intake screen */
+@keyframes intake-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes intake-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(20px, -15px) scale(1.08); }
+}
+
+@keyframes intake-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.intake-fade-up {
+  animation: intake-fade-up 0.5s ease both;
+}
+
+.intake-ambient-pink {
+  position: fixed;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(255, 20, 147, 0.12) 0%, transparent 70%);
+  top: -80px;
+  left: -60px;
+  filter: blur(60px);
+  pointer-events: none;
+  animation: intake-drift 8s ease-in-out infinite;
+  z-index: 0;
+}
+
+.intake-ambient-green {
+  position: fixed;
+  width: 350px;
+  height: 350px;
+  background: radial-gradient(circle, rgba(29, 185, 84, 0.10) 0%, transparent 70%);
+  bottom: -100px;
+  right: -80px;
+  filter: blur(70px);
+  pointer-events: none;
+  animation: intake-drift 8s ease-in-out 4s infinite;
+  z-index: 0;
+}
+
+.intake-shimmer {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.12) 50%, transparent 60%);
+  animation: intake-shimmer 3s ease-in-out infinite;
+}
+
+/* Sender onboarding wizard */
+@keyframes sender-ob-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12),
+                0 0 16px rgba(79, 70, 229, 0.06);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(79, 70, 229, 0.25),
+                0 0 28px rgba(79, 70, 229, 0.12);
+  }
+}
+
+@keyframes sender-ob-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes sender-ob-step-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes sender-ob-progress {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+.animate-sender-ob-glow {
+  animation: sender-ob-glow 2s ease-in-out infinite;
+}
+
+.animate-sender-ob-cursor {
+  animation: sender-ob-cursor 1s step-end infinite;
+}
+
+.animate-sender-ob-step-in {
+  animation: sender-ob-step-in 0.35s ease both;
+}
+
+.animate-sender-ob-progress {
+  animation: sender-ob-progress 5s linear forwards;
+}
+
+/* Warm scrollbar for review content */
+.warm-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.warm-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.warm-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-warm-border);
+  border-radius: 3px;
+}
+.warm-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--color-timestamp);
+}
+
+/* Custom video progress bar */
+.video-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: transparent;
+  cursor: pointer;
+  width: 100%;
+}
+.video-progress::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.2);
+}
+.video-progress::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: white;
+  margin-top: -4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.video-progress:hover::-webkit-slider-thumb {
+  opacity: 1;
 }

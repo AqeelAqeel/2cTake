@@ -10,8 +10,9 @@ import { Recorder } from '../components/Recorder'
 import { UploadProgress } from '../components/UploadProgress'
 import { OnboardingOverlay } from '../components/OnboardingOverlay'
 import { CountdownOverlay } from '../components/CountdownOverlay'
+import { FeedbackIntakeScreen } from '../components/FeedbackIntakeScreen'
 import { createCompositeStream, type CompositeStreamResult } from '../lib/compositeStream'
-import { Loader2, AlertCircle, Mic, MessageCircle, User, Headphones, Radio, Volume2 } from 'lucide-react'
+import { Loader2, AlertCircle, Mic } from 'lucide-react'
 import type { Session } from '../types'
 
 type ReviewStep = 'loading' | 'error' | 'briefing' | 'entry' | 'onboarding' | 'countdown' | 'recording' | 'uploading' | 'done'
@@ -215,76 +216,11 @@ export function ReviewLink() {
   // Briefing
   if (step === 'briefing') {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center px-4 py-12 bg-surface-secondary">
-        <div className="w-full max-w-md animate-fade-in">
-          {/* Header */}
-          <div className="mb-8 text-center">
-            <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-goblin-pink-dim">
-              <MessageCircle className="h-7 w-7 text-goblin-pink" />
-            </div>
-            <h1 className="text-2xl font-bold text-text-primary leading-snug">
-              <span className="text-goblin-pink">{senderName}</span> has asked you{'\n'}to provide feedback
-            </h1>
-            {session?.title && (
-              <p className="mt-3 text-sm text-text-secondary">
-                on <span className="font-medium text-text-primary">{session.title}</span>
-              </p>
-            )}
-          </div>
-
-          {/* What to expect */}
-          <div className="rounded-2xl border border-border bg-surface p-6 mb-4">
-            <p className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-4">
-              What to expect
-            </p>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-goblin-green-dim">
-                  <User className="h-3.5 w-3.5 text-goblin-green" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-text-primary">Enter your name</p>
-                  <p className="text-xs text-text-muted">No account or login needed</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-goblin-green-dim">
-                  <Headphones className="h-3.5 w-3.5 text-goblin-green" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-text-primary">Quick setup</p>
-                  <p className="text-xs text-text-muted">Optional tutorial, required audio, optional webcam</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-goblin-green-dim">
-                  <Radio className="h-3.5 w-3.5 text-goblin-green" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-text-primary">Record live feedback</p>
-                  <p className="text-xs text-text-muted">Speak your thoughts while viewing the document</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Environment note */}
-          <div className="rounded-2xl border border-border bg-surface p-4 mb-6 flex items-start gap-3">
-            <Volume2 className="h-4 w-4 text-text-muted shrink-0 mt-0.5" />
-            <p className="text-xs text-text-secondary leading-relaxed">
-              Find a spot with <span className="font-medium text-text-primary">no to moderate noise</span>. You're about to give live feedback — open this when you're ready.
-            </p>
-          </div>
-
-          {/* CTA */}
-          <button
-            onClick={() => setStep('entry')}
-            className="w-full rounded-xl bg-goblin-green px-4 py-3.5 text-sm font-semibold text-white hover:brightness-110 transition-all"
-          >
-            I understand
-          </button>
-        </div>
-      </div>
+      <FeedbackIntakeScreen
+        senderName={senderName}
+        documentName={session?.title}
+        onStart={() => setStep('entry')}
+      />
     )
   }
 

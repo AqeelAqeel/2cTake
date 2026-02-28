@@ -143,6 +143,7 @@ export function NewSession() {
   const copyLink = async () => {
     await navigator.clipboard.writeText(shareUrl)
     setCopied(true)
+    localStorage.setItem('2ctake_sender_onboarded', 'true')
     setTimeout(() => setCopied(false), 2000)
   }
 

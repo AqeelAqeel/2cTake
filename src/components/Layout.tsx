@@ -8,7 +8,7 @@ export function Layout() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <header className="h-14 border-b border-border/60 bg-white/80 backdrop-blur-xl flex items-center justify-between px-6 shrink-0 z-50">
+      <header className="h-14 border-b border-border/60 bg-white/80 backdrop-blur-xl flex items-center justify-between px-4 sm:px-6 shrink-0 z-50">
         <Link to="/" className="flex items-center gap-2 no-underline">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-600 to-purple-600 flex items-center justify-center">
             <Play className="w-3.5 h-3.5 text-white fill-white" />

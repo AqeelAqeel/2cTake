@@ -62,7 +62,7 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
   const [error, setError] = useState<string | null>(null)
   const [transcription, setTranscription] = useState<string | null>(null)
   const [elapsed, setElapsed] = useState(0)
-  const [cameraEnabled, setCameraEnabled] = useState(true)
+  const [cameraEnabled, setCameraEnabled] = useState(false)
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -270,17 +270,27 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
       />
 
       <div className="text-center">
-        <h2 className="text-xl font-bold text-text-primary">Mic{cameraEnabled ? ' & camera' : ''} check</h2>
+        <h2 className="text-xl font-bold text-text-primary">Mic check</h2>
         <p className="mt-1 text-sm text-text-secondary">
-          Grant permissions, then say the test phrase out loud.
+          Grant mic access, then say the test phrase out loud.
+          {' '}<span className="text-text-muted">Selfie camera is optional.</span>
         </p>
       </div>
 
       {/* Permissions request */}
       {(status === 'idle' || status === 'requesting' || status === 'denied') && (
         <div className="flex flex-col items-center gap-4 w-full">
-          <div className="flex gap-3">
-            {/* Camera icon with toggle */}
+          <div className="flex gap-4">
+            {/* Mic — required */}
+            <div className="flex flex-col items-center gap-1.5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50">
+                <Mic className="h-6 w-6 text-brand-600" />
+              </div>
+              <div className="h-5 w-9" /> {/* spacer to align with camera toggle */}
+              <span className="text-[10px] font-semibold text-brand-600">Required</span>
+            </div>
+
+            {/* Camera — optional with toggle */}
             <div className="flex flex-col items-center gap-1.5">
               <div className={`flex h-12 w-12 items-center justify-center rounded-xl transition-colors ${cameraEnabled ? 'bg-brand-50' : 'bg-surface-tertiary'}`}>
                 {cameraEnabled ? (
@@ -296,15 +306,7 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
               >
                 <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${cameraEnabled ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
               </button>
-              <span className="text-[10px] text-text-muted">{cameraEnabled ? 'On' : 'Off'}</span>
-            </div>
-
-            <div className="flex flex-col items-center gap-1.5">
-              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50">
-                <Mic className="h-6 w-6 text-brand-600" />
-              </div>
-              <div className="h-5 w-9" /> {/* spacer to align with camera toggle */}
-              <span className="text-[10px] text-text-muted">Required</span>
+              <span className="text-[10px] text-text-muted">Optional</span>
             </div>
           </div>
 
@@ -327,6 +329,12 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
                 ? 'Try again'
                 : 'Allow access'}
           </button>
+
+          {status === 'denied' && (
+            <p className="text-xs text-red-600 text-center leading-relaxed">
+              If "Try again" doesn't show a prompt, click the <strong>lock icon</strong> (or site settings icon) in your browser's address bar, reset permissions, and reload the page.
+            </p>
+          )}
         </div>
       )}
 
@@ -375,22 +383,22 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
           {/* Transport controls */}
           <div className="flex items-center gap-2 w-full justify-center">
             {status === 'ready' && (
-              <>
+              <div className="flex flex-col gap-2 w-full">
                 <button
                   onClick={startRecording}
-                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors flex-1 justify-center"
+                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors justify-center w-full"
                 >
                   <Volume2 className="h-4 w-4" />
                   Start test
                 </button>
                 <button
                   onClick={handleSkipTest}
-                  className="inline-flex items-center justify-center rounded-xl bg-surface border border-border p-3 text-text-secondary hover:bg-surface-tertiary transition-colors"
-                  title="Skip test"
+                  className="inline-flex items-center gap-2 rounded-xl bg-surface border border-border px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-surface-tertiary transition-colors justify-center w-full"
                 >
                   <SkipForward className="h-4 w-4" />
+                  Skip test
                 </button>
-              </>
+              </div>
             )}
 
             {status === 'recording' && (
@@ -525,20 +533,20 @@ export function OnboardingStepMicTest({ onPass }: OnboardingStepMicTestProps) {
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 w-full">
             <button
               onClick={retry}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors"
+              className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-6 py-3 text-sm font-semibold text-white hover:bg-brand-700 transition-colors justify-center w-full"
             >
               <RefreshCw className="h-4 w-4" />
               Try again
             </button>
             <button
               onClick={handleSkipTest}
-              className="inline-flex items-center gap-2 rounded-xl bg-surface border border-border px-4 py-3 text-sm font-medium text-text-secondary hover:bg-surface-tertiary transition-colors"
+              className="inline-flex items-center gap-2 rounded-xl bg-surface border border-border px-4 py-2.5 text-sm font-medium text-text-secondary hover:bg-surface-tertiary transition-colors justify-center w-full"
             >
               <SkipForward className="h-4 w-4" />
-              Skip
+              Skip test
             </button>
           </div>
         </div>
