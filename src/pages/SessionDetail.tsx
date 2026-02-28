@@ -20,6 +20,8 @@ import {
   Minus,
   PanelLeft,
   X,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react'
 import { formatTimestamp } from '../lib/transcription'
 import type { Recording } from '../types'
@@ -257,16 +259,22 @@ function EmptyReviews({ shareToken }: { shareToken: string }) {
 
 // ── Custom Video Player ──────────────────────────────────────────────────────
 
+type PlayerSize = 'small' | 'large'
+
 function VideoPlayer({
   videoRef,
   recording,
   currentTime,
   onTimeUpdate,
+  playerSize,
+  onToggleSize,
 }: {
   videoRef: React.RefObject<HTMLVideoElement | null>
   recording: Recording
   currentTime: number
   onTimeUpdate: () => void
+  playerSize: PlayerSize
+  onToggleSize: () => void
 }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [duration, setDuration] = useState(recording.duration || 0)
@@ -294,12 +302,21 @@ function VideoPlayer({
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0
 
   return (
-    <div className="relative group bg-black rounded-xl sm:rounded-2xl overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.15)]">
+    <div
+      className="relative group bg-black rounded-xl sm:rounded-2xl overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.15)] transition-all duration-300"
+      style={{
+        maxHeight: playerSize === 'small' ? '220px' : undefined,
+      }}
+    >
       <video
         ref={videoRef}
         key={recording.id}
         src={recording.video_url}
-        className="aspect-video w-full block"
+        className="w-full block"
+        style={{
+          maxHeight: playerSize === 'small' ? '220px' : undefined,
+          objectFit: playerSize === 'small' ? 'contain' : undefined,
+        }}
         onTimeUpdate={() => {
           onTimeUpdate()
           setIsPlaying(!videoRef.current?.paused)
@@ -307,7 +324,9 @@ function VideoPlayer({
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onLoadedMetadata={() => {
-          if (videoRef.current) setDuration(videoRef.current.duration)
+          if (videoRef.current && Number.isFinite(videoRef.current.duration)) {
+            setDuration(videoRef.current.duration)
+          }
         }}
         onClick={togglePlay}
         playsInline
@@ -325,24 +344,44 @@ function VideoPlayer({
         }}
         onClick={togglePlay}
       >
-        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/20">
+        <div
+          className={`rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/20 ${
+            playerSize === 'small' ? 'w-10 h-10' : 'w-12 h-12 sm:w-14 sm:h-14'
+          }`}
+        >
           {isPlaying ? (
-            <Pause className="w-5 h-5 sm:w-6 sm:h-6 text-white fill-white" />
+            <Pause className={`text-white fill-white ${playerSize === 'small' ? 'w-4 h-4' : 'w-5 h-5 sm:w-6 sm:h-6'}`} />
           ) : (
-            <Play className="w-5 h-5 sm:w-6 sm:h-6 text-white fill-white ml-0.5" />
+            <Play className={`text-white fill-white ml-0.5 ${playerSize === 'small' ? 'w-4 h-4' : 'w-5 h-5 sm:w-6 sm:h-6'}`} />
           )}
         </div>
       </div>
 
       {/* Bottom controls overlay */}
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent pt-8 pb-0">
-        {/* Time display */}
-        <div className="flex items-center justify-between px-3 sm:px-4 pb-2">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent pt-6 pb-0">
+        {/* Time display + size toggle */}
+        <div className="flex items-center justify-between px-3 sm:px-4 pb-1.5">
           <span className="text-[11px] sm:text-[12px] font-mono text-white/80 tabular-nums tracking-wide">
             {formatTimestamp(currentTime)}
             <span className="text-white/40 mx-1">/</span>
             {formatTimestamp(duration)}
           </span>
+
+          {/* Size toggle */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSize()
+            }}
+            className="w-7 h-7 rounded-md flex items-center justify-center text-white/70 hover:text-white hover:bg-white/15 transition-all"
+            title={playerSize === 'small' ? 'Theater mode' : 'Mini player'}
+          >
+            {playerSize === 'small' ? (
+              <Maximize2 className="w-3.5 h-3.5" />
+            ) : (
+              <Minimize2 className="w-3.5 h-3.5" />
+            )}
+          </button>
         </div>
 
         {/* Progress bar */}
@@ -497,6 +536,7 @@ export function SessionDetail() {
   const [currentTime, setCurrentTime] = useState(0)
   const [activeTab, setActiveTab] = useState<TabKey>('transcript')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [playerSize, setPlayerSize] = useState<PlayerSize>('small')
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -759,12 +799,14 @@ export function SessionDetail() {
         ) : activeRecording ? (
           <>
             {/* Video player */}
-            <div className="px-3 sm:px-6 pt-3 sm:pt-5 pb-1 shrink-0">
+            <div className="px-3 sm:px-6 pt-3 sm:pt-4 pb-1 shrink-0">
               <VideoPlayer
                 videoRef={videoRef}
                 recording={activeRecording}
                 currentTime={currentTime}
                 onTimeUpdate={handleTimeUpdate}
+                playerSize={playerSize}
+                onToggleSize={() => setPlayerSize((s) => (s === 'small' ? 'large' : 'small'))}
               />
             </div>
 
