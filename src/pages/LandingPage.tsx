@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuthStore } from '../state/authStore'
 import {
-  Upload, Link2, FileText, Video, Clock,
+  Upload, Link2, FileText, Video, Clock, Mic,
   PenTool, ArrowRight, Play, Check,
   ChevronDown, Eye, Sparkles, Users,
 } from 'lucide-react'
@@ -85,8 +85,8 @@ function GoogleIcon({ className = 'h-5 w-5' }: { className?: string }) {
 function BrandText({ className = '' }: { className?: string }) {
   return (
     <span className={className}>
-      <span className="text-goblin-pink">feedback</span>{' '}
-      <span className="text-goblin-green font-black">goblin</span>
+      <span className="text-goblin-green font-black">2c</span>{' '}
+      <span className="text-goblin-pink">Take</span>
     </span>
   )
 }
@@ -147,7 +147,7 @@ function MockupShare() {
       </div>
       <div className="flex items-center gap-2 bg-white/5 rounded-lg px-4 py-3">
         <Link2 className="w-4 h-4 text-gray-500 shrink-0" />
-        <span className="text-sm text-gray-300 truncate font-mono">fbgoblin.app/review/a8x3kw</span>
+        <span className="text-sm text-gray-300 truncate font-mono">2ctake.app/review/a8x3kw</span>
         <button className="ml-auto shrink-0 text-xs bg-goblin-green text-black font-semibold px-3 py-1.5 rounded-md">
           Copy
         </button>
@@ -346,9 +346,9 @@ export function LandingPage() {
           </div>
 
           {/* Tagline */}
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white leading-tight">
-            Real feedback in <span className="text-goblin-green">5 minutes</span>,<br className="hidden sm:block" />
-            {' '}not 5 follow-ups.
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white leading-tight max-w-3xl mx-auto">
+            a <span className="text-goblin-green">reviewing / feedback experience</span> your network will{' '}
+            <span className="text-goblin-pink">thank you for.</span>
           </h1>
 
           {/* Description */}
@@ -594,22 +594,124 @@ export function LandingPage() {
       </section>
 
 
-      {/* ─── FINAL CTA ─── */}
+      {/* ─── WHAT YOUR REVIEWERS SEE ─── */}
       <section className="py-24 md:py-36 px-6 relative">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-1/2 left-1/3 w-[300px] h-[300px] bg-goblin-pink/10 rounded-full blur-[120px]" />
           <div className="absolute top-1/2 right-1/3 w-[300px] h-[300px] bg-goblin-green/10 rounded-full blur-[120px]" />
         </div>
 
-        <Reveal>
-          <div className="relative z-10 max-w-2xl mx-auto text-center">
-            <h2 className="text-3xl md:text-5xl font-bold text-white mb-6 leading-tight">
-              Ready to summon<br />
-              the <span className="text-goblin-green font-black">goblin</span>?
+        <div className="relative z-10 max-w-5xl mx-auto">
+          <Reveal>
+            <h2 className="text-center text-3xl md:text-5xl font-bold text-white mb-6 leading-tight">
+              What your reviewers see
             </h2>
-            <p className="text-gray-400 text-lg mb-10">
-              Stop chasing people for feedback. Let them give it on their own terms.
+            <p className="text-center text-gray-400 text-lg mb-16 max-w-2xl mx-auto">
+              Immediate onboarding to review your artifact. No signup or setup needed.
             </p>
+          </Reveal>
+
+          <div className="grid md:grid-cols-2 gap-12 md:gap-16 items-center">
+            {/* Mobile mockup */}
+            <Reveal delay={100}>
+              <div className="mx-auto max-w-[280px]">
+                <div className="rounded-[2rem] border-[3px] border-white/10 bg-[#0A0A0F] overflow-hidden shadow-2xl shadow-goblin-green/5">
+                  {/* Phone notch */}
+                  <div className="flex justify-center pt-2 pb-3">
+                    <div className="w-20 h-5 bg-black rounded-full" />
+                  </div>
+                  {/* Screen content */}
+                  <div className="px-4 pb-6 space-y-5">
+                    {/* Header */}
+                    <div className="text-center">
+                      <BrandText className="text-lg font-bold" />
+                      <p className="text-[10px] text-gray-500 mt-1">Review session</p>
+                    </div>
+                    {/* Artifact preview */}
+                    <div className="rounded-lg bg-white/5 p-3 space-y-1.5">
+                      {[85, 70, 90, 55, 80, 65, 75].map((w, i) => (
+                        <div key={i} className="h-1 bg-white/8 rounded" style={{ width: `${w}%` }} />
+                      ))}
+                      {/* Annotation overlay */}
+                      <div className="relative mt-2">
+                        <div className="absolute -top-3 right-2 w-10 h-5 border border-goblin-pink rounded-sm opacity-70" />
+                        <svg className="absolute -top-1 left-1 opacity-70" width="30" height="14">
+                          <path d="M0,12 Q8,0 15,7 T30,4" stroke="#1DB954" strokeWidth="1.5" fill="none" />
+                        </svg>
+                      </div>
+                    </div>
+                    {/* Webcam PiP */}
+                    <div className="flex items-center gap-2">
+                      <div className="w-10 h-8 rounded bg-white/5 flex items-center justify-center">
+                        <Users className="w-3 h-3 text-white/40" />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse-dot" />
+                        <span className="text-[9px] text-red-400 font-semibold">REC</span>
+                        <span className="text-[9px] text-gray-500 font-mono ml-1">02:14</span>
+                      </div>
+                    </div>
+                    {/* Toolbar hint */}
+                    <div className="flex justify-center gap-3">
+                      <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center">
+                        <PenTool className="w-3 h-3 text-goblin-pink/60" />
+                      </div>
+                      <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center">
+                        <Mic className="w-3 h-3 text-goblin-green/60" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+
+            {/* Feature list */}
+            <Reveal delay={200}>
+              <div className="space-y-8">
+                <p className="text-xs uppercase tracking-[0.2em] text-gray-500 font-medium">They get</p>
+
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-xl font-semibold text-white mb-1">
+                      a <span className="text-goblin-green">UI</span> for <span className="text-goblin-pink">markup</span>
+                    </h3>
+                    <p className="text-sm text-gray-400">Draw, circle, underline — right on your artifact while talking through it.</p>
+                  </div>
+
+                  <div>
+                    <h3 className="text-xl font-semibold text-white mb-1">
+                      their <span className="text-goblin-green">audio</span> is <span className="text-goblin-pink">transcribed</span>
+                    </h3>
+                    <p className="text-sm text-gray-400">Every word captured and timestamped automatically. No extra steps.</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-white/5 pt-8 space-y-6">
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-500 font-medium">You see</p>
+
+                  <div>
+                    <p className="text-gray-300 leading-relaxed">
+                      The timestamps of the markups, transcription, and real time video of what they were viewing.
+                    </p>
+                  </div>
+
+                  <div>
+                    <p className="text-gray-300 leading-relaxed">
+                      You get a dedicated, reusable link you can blast out to each person for each shareable you want reviewed.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
+        </div>
+      </section>
+
+
+      {/* ─── FINAL CTA ─── */}
+      <section className="py-24 md:py-32 px-6">
+        <Reveal>
+          <div className="max-w-2xl mx-auto text-center">
             <CTAButton onClick={signInWithGoogle} size="lg">
               <GoogleIcon className="h-5 w-5" />
               Get started with Google
