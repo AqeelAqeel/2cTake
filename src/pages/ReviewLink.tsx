@@ -135,6 +135,7 @@ export function ReviewLink() {
           blob,
           session.id,
           reviewerId,
+          shareToken,
           (pct) => {
             recorderStore.setUploadProgress(pct)
           },
@@ -146,7 +147,7 @@ export function ReviewLink() {
         setUploadStatus('error')
       }
     },
-    [session, reviewerId, recorderStore]
+    [session, reviewerId, shareToken, recorderStore]
   )
 
   const handleRetryUpload = () => {

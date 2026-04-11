@@ -3,9 +3,63 @@
 // and uploads to the artifacts storage bucket.
 //
 // Deploy: supabase functions deploy fetch-artifact
-// Env vars needed: FIRECRAWL_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+// Env vars needed:
+//   FIRECRAWL_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+// R2 env vars (optional — when set, the upload lands in R2 instead of
+// Supabase Storage):
+//   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ARTIFACTS_BUCKET
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { AwsClient } from 'https://esm.sh/aws4fetch@1.0.20'
+
+/**
+ * Uploads an artifact blob to storage, preferring Cloudflare R2 when the
+ * R2_* env vars are configured. Falls back to Supabase Storage otherwise.
+ * Returns the storage key (bucket-root-relative), which is what
+ * `sessions.artifact_url` stores in both worlds.
+ */
+async function uploadArtifact(
+  supabase: ReturnType<typeof createClient>,
+  blob: Blob,
+  ext: string,
+  contentType: string
+): Promise<string> {
+  const storagePath = `${crypto.randomUUID()}.${ext}`
+
+  const accountId = Deno.env.get('R2_ACCOUNT_ID')
+  const accessKeyId = Deno.env.get('R2_ACCESS_KEY_ID')
+  const secretAccessKey = Deno.env.get('R2_SECRET_ACCESS_KEY')
+  const bucket = Deno.env.get('R2_ARTIFACTS_BUCKET')
+
+  if (accountId && accessKeyId && secretAccessKey && bucket) {
+    const r2 = new AwsClient({
+      accessKeyId,
+      secretAccessKey,
+      service: 's3',
+      region: 'auto',
+    })
+    const url = `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${storagePath}`
+    const r2Res = await r2.fetch(url, {
+      method: 'PUT',
+      body: blob,
+      headers: { 'Content-Type': contentType },
+    })
+    if (!r2Res.ok) {
+      const errBody = await r2Res.text().catch(() => '')
+      throw new Error(`R2 upload failed: ${r2Res.status} ${errBody}`)
+    }
+    return storagePath
+  }
+
+  const { error: uploadError } = await supabase.storage
+    .from('artifacts')
+    .upload(storagePath, blob, { contentType })
+
+  if (uploadError) {
+    throw new Error(`Storage upload failed: ${uploadError.message}`)
+  }
+  return storagePath
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -202,23 +256,14 @@ Deno.serve(async (req) => {
       ext = result.ext
     }
 
-    // Upload to Supabase storage
+    // Upload to storage (R2 when configured, Supabase otherwise)
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    const storagePath = `${crypto.randomUUID()}.${ext}`
-
-    const { error: uploadError } = await supabase.storage
-      .from('artifacts')
-      .upload(storagePath, blob, {
-        contentType: ext === 'pdf' ? 'application/pdf' : 'image/png',
-      })
-
-    if (uploadError) {
-      throw new Error(`Storage upload failed: ${uploadError.message}`)
-    }
+    const contentType = ext === 'pdf' ? 'application/pdf' : 'image/png'
+    const storagePath = await uploadArtifact(supabase, blob, ext, contentType)
 
     const artifactType = ext === 'pdf' ? 'pdf' : 'image'
 

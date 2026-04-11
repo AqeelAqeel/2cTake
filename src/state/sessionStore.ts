@@ -2,13 +2,36 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import type { Session, Recording, Transcript } from '../types'
 import type { AnnotationSnapshot } from '../types/annotation'
+import {
+  isR2Enabled,
+  presignDownload,
+  presignUpload,
+  publicArtifactUrl,
+  putToR2,
+} from '../lib/r2'
 
-/** Resolve artifact_url from a storage path to a signed URL (1-hour expiry). */
+/**
+ * Resolves a stored `artifact_url` (which is actually a storage path) to
+ * something a `<img>` / `<iframe>` can load.
+ *
+ * Behavior is mode-dependent:
+ *   - R2 enabled: returns the public bucket URL — synchronous string join.
+ *   - R2 disabled: asks Supabase Storage for a 1-hour signed URL.
+ *
+ * Legacy rows already containing an absolute URL are passed through in both
+ * modes (the `startsWith('http')` shortcut). This is also how dual-read
+ * works during migration — `publicArtifactUrl` preserves absolute URLs.
+ */
 async function resolveArtifactUrl<T extends { artifact_url: string }>(
   session: T
 ): Promise<T> {
-  // Legacy rows may already contain a full public URL — leave them alone
+  if (!session.artifact_url) return session
   if (session.artifact_url.startsWith('http')) return session
+
+  if (isR2Enabled()) {
+    return { ...session, artifact_url: publicArtifactUrl(session.artifact_url) }
+  }
+
   const { data } = await supabase.storage
     .from('artifacts')
     .createSignedUrl(session.artifact_url, 3600)
@@ -141,21 +164,37 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       sourceUrl = artifactUrl
       sourceType = result.source_type
     } else if (artifactFile) {
-      // Direct file upload path (existing logic)
+      // Direct file upload path
       const fileExt = artifactFile.name.split('.').pop()?.toLowerCase()
       const documentExts = ['doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx', 'txt', 'csv', 'rtf']
       artifactType = fileExt === 'pdf' ? 'pdf'
         : documentExts.includes(fileExt ?? '') ? 'document'
         : 'image'
-      filePath = `${crypto.randomUUID()}.${fileExt}`
 
-      const { error: uploadError } = await supabase.storage
-        .from('artifacts')
-        .upload(filePath, artifactFile)
+      if (isR2Enabled()) {
+        try {
+          const presigned = await presignUpload({
+            kind: 'artifact',
+            contentType: artifactFile.type || 'application/octet-stream',
+            ext: fileExt,
+          })
+          await putToR2(presigned, artifactFile)
+          filePath = presigned.key
+        } catch (err) {
+          set({ error: `Upload failed: ${(err as Error).message}`, loading: false })
+          return null
+        }
+      } else {
+        filePath = `${crypto.randomUUID()}.${fileExt}`
 
-      if (uploadError) {
-        set({ error: `Upload failed: ${uploadError.message}`, loading: false })
-        return null
+        const { error: uploadError } = await supabase.storage
+          .from('artifacts')
+          .upload(filePath, artifactFile)
+
+        if (uploadError) {
+          set({ error: `Upload failed: ${uploadError.message}`, loading: false })
+          return null
+        }
       }
     } else {
       set({ error: 'A file or URL is required', loading: false })
@@ -223,19 +262,37 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       .order('created_at', { ascending: false })
 
     if (!error && data) {
-      // video_url stores a storage path — resolve to signed URLs
-      const withSignedUrls = await Promise.all(
-        (data as Recording[]).map(async (rec) => {
-          const { data: signedData } = await supabase.storage
-            .from('recordings')
-            .createSignedUrl(rec.video_url, 3600) // 1 hour expiry
-          return {
-            ...rec,
-            video_url: signedData?.signedUrl ?? rec.video_url,
-          }
-        })
-      )
-      set({ recordings: withSignedUrls })
+      // video_url stores a storage path — resolve to playable URLs
+      const records = data as Recording[]
+
+      if (isR2Enabled()) {
+        // Batch-presign every key in a single round trip.
+        const keys = records.map((r) => r.video_url).filter(Boolean)
+        let urlMap: Record<string, string> = {}
+        try {
+          urlMap = await presignDownload(keys)
+        } catch (err) {
+          console.error('[fetchRecordings] R2 presign failed:', err)
+        }
+        const withUrls = records.map((rec) => ({
+          ...rec,
+          video_url: urlMap[rec.video_url] ?? rec.video_url,
+        }))
+        set({ recordings: withUrls })
+      } else {
+        const withSignedUrls = await Promise.all(
+          records.map(async (rec) => {
+            const { data: signedData } = await supabase.storage
+              .from('recordings')
+              .createSignedUrl(rec.video_url, 3600) // 1 hour expiry
+            return {
+              ...rec,
+              video_url: signedData?.signedUrl ?? rec.video_url,
+            }
+          })
+        )
+        set({ recordings: withSignedUrls })
+      }
     }
   },
 
@@ -268,12 +325,23 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const annotationPath = `${recording.session_id}/${recording.reviewer_id}/${recording.id}_annotations.json`
 
     try {
-      const { data } = await supabase.storage
-        .from('recordings')
-        .download(annotationPath)
+      let text: string | null = null
 
-      if (data) {
-        const text = await data.text()
+      if (isR2Enabled()) {
+        const urlMap = await presignDownload([annotationPath])
+        const signedUrl = urlMap[annotationPath]
+        if (signedUrl) {
+          const res = await fetch(signedUrl)
+          if (res.ok) text = await res.text()
+        }
+      } else {
+        const { data } = await supabase.storage
+          .from('recordings')
+          .download(annotationPath)
+        if (data) text = await data.text()
+      }
+
+      if (text) {
         const snapshots: AnnotationSnapshot[] = JSON.parse(text)
         set((state) => ({
           annotations: {

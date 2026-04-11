@@ -2,9 +2,58 @@
 // Triggered after a recording upload to generate a transcript via OpenAI Whisper
 //
 // Deploy: supabase functions deploy transcribe
-// Env vars needed: OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+// Env vars needed:
+//   OPENAI_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+// R2 env vars (optional — enables R2 primary read with Supabase fallback):
+//   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_RECORDINGS_BUCKET
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { AwsClient } from 'https://esm.sh/aws4fetch@1.0.20'
+
+/**
+ * Downloads a recording blob, preferring Cloudflare R2 when the R2_* env
+ * vars are configured. Falls back to Supabase Storage on 404 or missing
+ * config so the function keeps working during the migration cutover.
+ */
+async function downloadRecording(
+  supabase: ReturnType<typeof createClient>,
+  videoPath: string
+): Promise<Blob> {
+  const accountId = Deno.env.get('R2_ACCOUNT_ID')
+  const accessKeyId = Deno.env.get('R2_ACCESS_KEY_ID')
+  const secretAccessKey = Deno.env.get('R2_SECRET_ACCESS_KEY')
+  const bucket = Deno.env.get('R2_RECORDINGS_BUCKET')
+
+  if (accountId && accessKeyId && secretAccessKey && bucket) {
+    try {
+      const r2 = new AwsClient({
+        accessKeyId,
+        secretAccessKey,
+        service: 's3',
+        region: 'auto',
+      })
+      const url = `https://${accountId}.r2.cloudflarestorage.com/${bucket}/${videoPath}`
+      const r2Res = await r2.fetch(url, { method: 'GET' })
+      if (r2Res.ok) {
+        return await r2Res.blob()
+      }
+      // 404 means the object isn't in R2 yet — fall through to Supabase
+      if (r2Res.status !== 404) {
+        console.warn(`R2 GET returned ${r2Res.status}, falling back to Supabase`)
+      }
+    } catch (err) {
+      console.warn('R2 GET threw, falling back to Supabase:', err)
+    }
+  }
+
+  const { data, error } = await supabase.storage
+    .from('recordings')
+    .download(videoPath)
+  if (error || !data) {
+    throw new Error(`Failed to download video: ${error?.message ?? 'not found'}`)
+  }
+  return data
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -46,16 +95,8 @@ Deno.serve(async (req) => {
         status: 'processing',
       })
 
-    // Download video from private storage using service role
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('recordings')
-      .download(video_path)
-
-    if (downloadError || !fileData) {
-      throw new Error(`Failed to download video: ${downloadError?.message}`)
-    }
-
-    const videoBlob = fileData
+    // Download video (R2 primary, Supabase fallback during migration)
+    const videoBlob = await downloadRecording(supabase, video_path)
 
     // Send to OpenAI Whisper API
     const formData = new FormData()
