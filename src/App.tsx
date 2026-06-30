@@ -8,6 +8,7 @@ import { LandingPage } from './pages/LandingPage'
 import { Dashboard } from './pages/Dashboard'
 import { NewSession } from './pages/NewSession'
 import { SessionDetail } from './pages/SessionDetail'
+import { Contacts } from './pages/Contacts'
 import { ReviewLink } from './pages/ReviewLink'
 import { AuthCallback } from './pages/AuthCallback'
 
@@ -62,6 +63,7 @@ export default function App() {
           >
             <Route index element={<Dashboard />} />
             <Route path="new" element={<NewSession />} />
+            <Route path="contacts" element={<Contacts />} />
             <Route path="session/:id" element={<SessionDetail />} />
           </Route>
         </Routes>

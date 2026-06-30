@@ -420,6 +420,7 @@ reviewers                   recordings --------> recordings bucket (video_url = 
 | `/login` | LandingPage | Public | Marketing landing page with Google OAuth sign-in |
 | `/` | Dashboard | Protected | Session list with stats, search, sort |
 | `/new` | NewSession | Protected | Create session: upload artifact, set title/context/limit |
+| `/contacts` | Contacts | Protected | Address book + templates, text review links via Quo (group chat), message counts, in-app AI assistant |
 | `/session/:id` | SessionDetail | Protected | View artifact + recordings + transcripts |
 | `/review/:shareToken` | ReviewLink | Public | Full reviewer flow: name --> permissions --> record --> send |
 
@@ -693,6 +694,47 @@ Each feature is named in plain English. For each: what it does, which files are 
 
 ---
 
+### Feature: "Contacts & Texting (Quo)"
+
+**What it does:** Senders keep an address book, save reusable message templates, and text a session's
+review link to up to 10 contacts at once as a Quo SMS group chat. An in-app AI assistant (grounded in
+these docs) answers product questions and helps draft texts; an SMS AI bot auto-replies when
+recipients text back. Every message sent/received is counted.
+
+**User action:** Open `/contacts`. Add contacts (name + phone, confirm). Pick a session (or paste a
+link), choose/edit a template, select contacts, click "Send group text". Chat with the assistant in
+the side panel.
+
+**Files touched:**
+| File | Role |
+|------|------|
+| `src/pages/Contacts.tsx` | Page: counts, composer, contacts manager, templates |
+| `src/components/ContactsAssistant.tsx` | In-app AI chat widget |
+| `src/state/contactsStore.ts` | Zustand: contacts/templates CRUD, counts, `normalizePhone()` |
+| `src/lib/api.ts` | `sendQuoText()`, `askAssistant()` (authed POST helpers) |
+| `api/quo-send.ts` | Sends the group text via Quo, logs recipients |
+| `api/quo-webhook.ts` | Inbound webhook → AI reply → Quo (HMAC-verified) |
+| `api/assistant.ts` | In-app assistant endpoint (OpenAI) |
+| `api/_shared/{quo,openai,supabase,http,product-context}.ts` | Shared server helpers |
+| `supabase/migrations/011_quo_contacts_messaging.sql` | `contacts`, `message_templates`, `messages_log` |
+
+**Technical implementation:**
+- Quo REST: `POST https://api.quo.com/v1/messages`, auth = **raw** API key in `Authorization`
+  (no Bearer). `to` accepts 1–10 recipients (one group conversation); larger lists batch by 10.
+- `/api/quo-send` (Supabase JWT) resolves contacts, fills `{{link}}`/`{{name}}`/`{{sender}}`, sends,
+  and writes one `messages_log` row per recipient.
+- `/api/quo-webhook` verifies the Svix-style HMAC (`webhook-id.webhook-timestamp.rawBody`,
+  base64 `QUO_WEBHOOK_KEY`), logs the inbound text, builds a docs-grounded reply, sends it to the
+  whole group, and logs it. Idempotent on `quo_message_id`.
+- Counts are `messages_log` row counts by `direction`, owner-scoped via RLS.
+- **A2P:** US delivery requires Quo A2P 10DLC approval; until then Quo returns
+  `A2P Registration Not Approved`, surfaced verbatim to the UI.
+- **Vercel runtime:** functions run on the legacy Node `(req,res)` signature and are transpiled
+  file-by-file, so local imports use `.js` extensions and handlers are wrapped with
+  `webHandler()` (`api/_shared/http.ts`) to bridge to the Web `Request`/`Response` API.
+
+---
+
 ## 10. Project Structure
 
 ```
@@ -835,6 +877,15 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 OPENAI_API_KEY=sk-...
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+**Quo texting** (server-only, set in Vercel — never `VITE_`-prefixed):
+```
+NEXT_QUO_API_KEY=...          # raw Authorization header (no Bearer)
+QUO_FROM_NUMBER=+19168667867  # workspace number texts are sent from
+QUO_USER_ID=US...             # Quo user id
+QUO_PHONE_NUMBER_ID=PN...     # Quo phone number id
+QUO_WEBHOOK_KEY=...           # base64 HMAC secret for the inbound webhook
 ```
 
 ---
@@ -994,5 +1045,5 @@ When adding features, update this doc. Below are implementation guides for commo
 
 ---
 
-*Last updated: 2026-02-27 (Reviewer briefing screen, sender name personalization, owner_display_name column)*
+*Last updated: 2026-06-30 (Quo texting: /contacts route, contacts/templates/messages_log tables (migration 011), /api/quo-send + /api/quo-webhook + /api/assistant, in-app + SMS AI bot)*
 *Update this file whenever you make structural changes to the codebase.*

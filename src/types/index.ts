@@ -65,3 +65,41 @@ export interface User {
   name: string | null
   avatar_url: string | null
 }
+
+export interface Contact {
+  id: string
+  owner_id: string
+  name: string
+  phone: string
+  confirmed: boolean
+  notes: string | null
+  created_at: string
+}
+
+export interface MessageTemplate {
+  id: string
+  owner_id: string
+  name: string
+  body: string
+  created_at: string
+}
+
+export interface MessageLog {
+  id: string
+  owner_id: string | null
+  session_id: string | null
+  contact_id: string | null
+  direction: 'outgoing' | 'incoming'
+  quo_message_id: string | null
+  quo_conversation_id: string | null
+  from_number: string | null
+  to_number: string | null
+  content: string | null
+  status: string | null
+  created_at: string
+}
+
+export interface MessageCounts {
+  sent: number
+  received: number
+}
