@@ -58,10 +58,14 @@ create policy "templates: owner full access"
 -- inbound messages it's resolved by matching the Quo sender number back to one
 -- of the owner's contacts (may be null if no match). This table is the source
 -- of truth for the "messages to / from" counts shown on the Contacts page.
+-- NOTE: session_id is intentionally a bare uuid with NO foreign key. This
+-- Supabase project is shared across many apps and its public.sessions table
+-- belongs to a different app, so an FK here would bind to the wrong table and
+-- reject real 2cTake session ids. Keep it loose; the app supplies the id.
 create table public.messages_log (
   id                  uuid primary key default gen_random_uuid(),
   owner_id            uuid references auth.users(id) on delete cascade,
-  session_id          uuid references public.sessions(id) on delete set null,
+  session_id          uuid,
   contact_id          uuid references public.contacts(id) on delete set null,
   direction           text not null check (direction in ('outgoing', 'incoming')),
   quo_message_id      text,
