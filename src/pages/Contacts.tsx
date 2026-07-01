@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useContactsStore, normalizePhone } from '../state/contactsStore'
 import { useSessionStore } from '../state/sessionStore'
+import { useSettingsStore } from '../state/settingsStore'
 import { useAuthStore } from '../state/authStore'
 import { sendQuoText, type SendTextResult } from '../lib/api'
 import { ContactsAssistant } from '../components/ContactsAssistant'
@@ -42,12 +43,14 @@ export function Contacts() {
     fetchCounts,
   } = useContactsStore()
   const { sessions, fetchSessions } = useSessionStore()
+  const { projects, fetchProjects } = useSettingsStore()
   const { user } = useAuthStore()
 
   const senderName = user?.name?.split(' ')[0] ?? ''
 
   // compose state
   const [sessionId, setSessionId] = useState('')
+  const [projectId, setProjectId] = useState('')
   const [manualLink, setManualLink] = useState('')
   const [templateId, setTemplateId] = useState('')
   const [body, setBody] = useState(DEFAULT_BODY)
@@ -68,7 +71,8 @@ export function Contacts() {
   useEffect(() => {
     fetchAll()
     fetchSessions()
-  }, [fetchAll, fetchSessions])
+    fetchProjects()
+  }, [fetchAll, fetchSessions, fetchProjects])
 
   const link = useMemo(() => {
     if (manualLink.trim()) return manualLink.trim()
@@ -125,6 +129,7 @@ export function Contacts() {
         message: body,
         contactIds: [...selected],
         sessionId: sessionId || undefined,
+        projectId: projectId || undefined,
         senderName,
       })
       setResult(res)
@@ -206,6 +211,23 @@ export function Contacts() {
                 placeholder="…or paste a review link directly"
                 className="mt-2 w-full rounded-xl border border-border px-3 py-2 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
               />
+
+              {/* project — ties this send's replies to a project for coaching */}
+              <label className="mt-4 block text-xs font-medium text-text-secondary">
+                Project (so replies aggregate for coaching)
+              </label>
+              <select
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-border px-3 py-2.5 text-sm focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100"
+              >
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
 
               {/* template + body */}
               <div className="mt-4 flex items-center justify-between">

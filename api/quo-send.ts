@@ -22,6 +22,7 @@ interface SendRequest {
   contactIds?: string[]
   to?: string[] // extra raw E.164 numbers not in the address book
   sessionId?: string // for logging/attribution
+  projectId?: string // ties these messages to a project for feedback aggregation
   senderName?: string // overrides {{sender}} (defaults to nothing)
 }
 
@@ -149,6 +150,7 @@ export default webHandler(async function handler(req: Request): Promise<Response
       logRows.push({
         owner_id: user.id,
         session_id: body.sessionId ?? null,
+        project_id: body.projectId ?? null,
         contact_id: r.contactId,
         direction: 'outgoing',
         quo_message_id: result.messageId ?? null,

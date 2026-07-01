@@ -103,3 +103,23 @@ export interface MessageCounts {
   sent: number
   received: number
 }
+
+export interface UserSettings {
+  owner_id: string
+  ai_instructions: string | null
+  ai_tone: string | null
+  ai_goals: string | null
+  prefs: Record<string, unknown>
+  created_at: string
+  updated_at: string
+}
+
+export interface Project {
+  id: string
+  owner_id: string
+  name: string
+  description: string | null
+  ai_instructions: string | null
+  created_at: string
+  updated_at: string
+}

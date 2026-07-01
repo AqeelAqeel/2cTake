@@ -10,9 +10,11 @@ import { json, preflight, webHandler } from './_shared/http.js'
 import { getSupabaseAdmin, getUserFromJwt } from './_shared/supabase.js'
 import { openaiChat, type ChatMessage } from './_shared/openai.js'
 import { PRODUCT_SYSTEM_PROMPT } from './_shared/product-context.js'
+import { loadAiContext } from './_shared/settings.js'
 
 interface AssistantRequest {
   messages: { role: 'user' | 'assistant'; content: string }[]
+  projectId?: string
 }
 
 const MAX_TURNS = 20
@@ -51,10 +53,14 @@ export default webHandler(async function handler(req: Request): Promise<Response
   }
 
   try {
-    const reply = await openaiChat(
-      [{ role: 'system', content: PRODUCT_SYSTEM_PROMPT }, ...turns],
-      { temperature: 0.4, maxTokens: 600 }
-    )
+    const ctx = await loadAiContext(sb, user.id, body.projectId)
+    const system: ChatMessage[] = [{ role: 'system', content: PRODUCT_SYSTEM_PROMPT }]
+    if (ctx.systemAddon) system.push({ role: 'system', content: ctx.systemAddon })
+
+    const reply = await openaiChat([...system, ...turns], {
+      temperature: 0.4,
+      maxTokens: 600,
+    })
     return json({ reply })
   } catch (err) {
     console.error('[assistant] error:', err)

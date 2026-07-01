@@ -30,6 +30,7 @@ export interface SendTextPayload {
   contactIds?: string[]
   to?: string[]
   sessionId?: string
+  projectId?: string
   senderName?: string
 }
 
@@ -50,6 +51,22 @@ export interface AssistantTurn {
   content: string
 }
 
-export function askAssistant(messages: AssistantTurn[]): Promise<{ reply: string }> {
-  return authedPost<{ reply: string }>('/api/assistant', { messages })
+export function askAssistant(
+  messages: AssistantTurn[],
+  projectId?: string
+): Promise<{ reply: string }> {
+  return authedPost<{ reply: string }>('/api/assistant', { messages, projectId })
+}
+
+export interface CoachStats {
+  messages: number
+  contacts: number
+  transcripts: number
+}
+
+export function askCoach(
+  messages: AssistantTurn[],
+  projectId?: string
+): Promise<{ reply: string; stats: CoachStats }> {
+  return authedPost<{ reply: string; stats: CoachStats }>('/api/coach', { messages, projectId })
 }

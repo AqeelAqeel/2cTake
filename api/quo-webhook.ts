@@ -18,6 +18,7 @@ import { getSupabaseAdmin } from './_shared/supabase.js'
 import { quoSendMessage } from './_shared/quo.js'
 import { openaiChat, type ChatMessage } from './_shared/openai.js'
 import { PRODUCT_SYSTEM_PROMPT } from './_shared/product-context.js'
+import { loadAiContext } from './_shared/settings.js'
 
 // ── Svix-style signature verification ──────────────────────────────────────
 function safeEqual(a: string, b: string): boolean {
@@ -68,13 +69,16 @@ export default webHandler(async function handler(req: Request): Promise<Response
   // Must read the RAW body before parsing for signature verification.
   const rawBody = await req.text()
 
+  // Fail CLOSED: a missing signing secret must never fall through to processing,
+  // or a misconfigured deploy turns this into an open, billable AI-driven SMS
+  // relay from our A2P number (sr-viber-surf SEC-002).
   const secret = process.env.QUO_WEBHOOK_KEY
-  if (secret) {
-    if (!verifySignature(rawBody, req.headers, secret)) {
-      return json({ error: 'Invalid signature' }, 401)
-    }
-  } else {
-    console.warn('[quo-webhook] QUO_WEBHOOK_KEY not set — skipping signature check')
+  if (!secret) {
+    console.error('[quo-webhook] QUO_WEBHOOK_KEY not configured — rejecting webhook')
+    return json({ error: 'Webhook secret not configured' }, 500)
+  }
+  if (!verifySignature(rawBody, req.headers, secret)) {
+    return json({ error: 'Invalid signature' }, 401)
   }
 
   let event: QuoEvent
@@ -121,12 +125,13 @@ export default webHandler(async function handler(req: Request): Promise<Response
   // back to matching the sender number against the address book.
   let ownerId: string | null = null
   let sessionId: string | null = null
+  let projectId: string | null = null
   let contactId: string | null = null
 
   if (conversationId) {
     const { data: prior } = await sb
       .from('messages_log')
-      .select('owner_id, session_id, contact_id')
+      .select('owner_id, session_id, project_id, contact_id')
       .eq('quo_conversation_id', conversationId)
       .order('created_at', { ascending: false })
       .limit(1)
@@ -134,6 +139,7 @@ export default webHandler(async function handler(req: Request): Promise<Response
     if (prior) {
       ownerId = prior.owner_id
       sessionId = prior.session_id
+      projectId = prior.project_id
       contactId = prior.contact_id
     }
   }
@@ -154,6 +160,7 @@ export default webHandler(async function handler(req: Request): Promise<Response
   await sb.from('messages_log').insert({
     owner_id: ownerId,
     session_id: sessionId,
+    project_id: projectId,
     contact_id: contactId,
     direction: 'incoming',
     quo_message_id: messageId ?? null,
@@ -186,18 +193,21 @@ export default webHandler(async function handler(req: Request): Promise<Response
   // Generate + send the AI reply.
   let reply = ''
   try {
-    reply = await openaiChat(
-      [
-        { role: 'system', content: PRODUCT_SYSTEM_PROMPT },
-        {
-          role: 'system',
-          content:
-            'You are replying over SMS. Keep replies under 320 characters, plain text, no markdown.',
-        },
-        ...history,
-      ],
-      { temperature: 0.4, maxTokens: 200 }
-    )
+    const ctx = await loadAiContext(sb, ownerId, projectId)
+    const system: ChatMessage[] = [
+      { role: 'system', content: PRODUCT_SYSTEM_PROMPT },
+      {
+        role: 'system',
+        content:
+          'You are replying over SMS. Keep replies under 320 characters, plain text, no markdown.',
+      },
+    ]
+    if (ctx.systemAddon) system.push({ role: 'system', content: ctx.systemAddon })
+
+    reply = await openaiChat([...system, ...history], {
+      temperature: 0.4,
+      maxTokens: 200,
+    })
   } catch (err) {
     console.error('[quo-webhook] AI error:', err)
     return json({ ok: true, replied: false, error: (err as Error).message })
@@ -217,6 +227,7 @@ export default webHandler(async function handler(req: Request): Promise<Response
   await sb.from('messages_log').insert({
     owner_id: ownerId,
     session_id: sessionId,
+    project_id: projectId,
     contact_id: contactId,
     direction: 'outgoing',
     quo_message_id: sent.messageId ?? null,

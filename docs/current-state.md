@@ -6,9 +6,18 @@
 > | | |
 > |---|---|
 > | **Branch** | `main` |
-> | **Current commit** | `cd6e55b00de43d266eb42549ea046f26c3e55c05` — *Prep Cloudflare R2 storage migration behind VITE_USE_R2 flag* |
+> | **Current commit** | `e1925a5` — *Decouple messages_log.session_id from shared public.sessions FK* (working tree adds reviewer comments + anon lockdown, migrations 012/013, uncommitted) |
 > | **Doc generated** | 2026-06-30 |
-> | **Companion doc** | [`AGENTS_LLM_PRODUCT.md`](./AGENTS_LLM_PRODUCT.md) — deep product/agent narrative |
+> | **Companion doc** | [`AGENTS_LLM_PRODUCT.md`](./AGENTS_LLM_PRODUCT.md) — deep product/agent narrative · [`COMMENTS_SPEC.md`](./COMMENTS_SPEC.md) — reviewer comments spec |
+
+> **⚠ Database provisioning caveat (2026-06-30).** Production `VITE_SUPABASE_URL` resolves to project
+> `jrvwmkgembuqvedynrne`, but that project (as reachable from this machine's CLI account) does **not**
+> contain 2cTake's core tables (`reviewers`, `recordings`, `transcripts`, `users_2ctake`) and its
+> `public.sessions` has a foreign shape (`id, user_id, title, created_at, updated_at`). This machine's
+> Supabase CLI is logged into a **different account** than the one that owns the real 2cTake schema, so
+> migrations here are applied via the **Supabase SQL editor** (browser, correct account), not the CLI /
+> Management API. Before applying migrations, run the preflight query (below, §11) to confirm the target
+> project actually has the 2cTake core tables.
 
 ---
 
@@ -76,6 +85,21 @@ The two roles drive the whole architecture:
   10DLC registration. Until the org is approved, Quo sends return `A2P Registration Not Approved` —
   the integration is fully wired and surfaces that error verbatim.
 
+### AI context settings, Projects & Coaching
+- **`/settings` route** — per-user **AI context settings** (`user_settings`): how the AI should
+  represent them, tone, goals. These defaults inform the in-app assistant, the SMS bot, and the coach.
+- **`/projects` route** — a **project** is "a thing you're getting feedback on." Each has its own
+  `ai_instructions` (layered on the user defaults) and a **Feedback Coach** chat that aggregates the
+  inbound replies collected for that project. Sends from `/contacts` can be tagged with a project so
+  replies roll up correctly (`messages_log.project_id`).
+- **`/api/coach`** — aggregates the owner's inbound SMS (and, once the schema exists, reviewer video
+  transcripts) and runs an AI coaching chat that surfaces themes/sentiment/next-actions. Feeds the AI
+  **contact names only, never phone numbers**, honoring the tenancy rule below.
+- **Multi-tenancy:** every new table is owner-scoped by `auth.uid()` RLS; a username is never
+  correlated with a phone number across tenants.
+- **OpenAI:** the project-scoped key (`sk-proj-…`) works as-is; `_shared/openai.ts` also forwards
+  optional `OpenAI-Project` / `OpenAI-Organization` headers (`OPENAI_PROJECT` / `OPENAI_ORGANIZATION`).
+
 ### Cross-cutting
 - Product analytics + session replay via **PostHog**; traffic analytics via **Vercel Analytics**.
 - Whisper transcription pipeline with timestamped segments.
@@ -134,13 +158,17 @@ The two roles drive the whole architecture:
 | `/api/r2-presign-download` | POST | Supabase JWT | Batch-mints presigned **GET** URLs (1 hr TTL) for the private recordings bucket. Verifies the caller owns *every* session referenced by the requested keys in one query; max 200 keys/request. |
 | `/api/quo-send` | POST | Supabase JWT | Texts a review link via Quo to saved contacts and/or raw numbers. Resolves contacts, fills the template, sends in 10-recipient batches (each a group chat), logs every recipient to `messages_log`. |
 | `/api/quo-webhook` | POST | Quo HMAC sig | Inbound-message webhook. Verifies the Svix-style signature, logs the incoming text, generates a docs-grounded AI reply, sends it back into the conversation via Quo, logs that too. |
-| `/api/assistant` | POST | Supabase JWT | In-app AI chatbot grounded in the product docs (OpenAI). Powers the chat widget on `/contacts`. |
+| `/api/assistant` | POST | Supabase JWT | In-app AI chatbot grounded in the product docs + the caller's AI context settings (OpenAI). Powers the chat widget on `/contacts`. Accepts optional `projectId`. |
+| `/api/coach` | POST | Supabase JWT | Aggregates the owner's inbound feedback (SMS today, transcripts later), optional `projectId` filter, and runs an AI coaching chat grounded in user/project AI context. |
 
 > **Vercel function gotcha:** this project's runtime invokes functions with the legacy Node
 > `(req, res)` signature, and transpiles each `api/*.ts` file-by-file (no bundling). So (1) local
 > relative imports must use **`.js`** extensions (e.g. `./_shared/http.js`), and (2) handlers are
 > wrapped with `webHandler()` (`api/_shared/http.ts`), a small adapter that bridges Node `(req,res)`
-> ↔ the Web `Request`/`Response` API the handlers are written against.
+> ↔ the Web `Request`/`Response` API the handlers are written against. **Raw body:** `webHandler`
+> reads `req.rawBody` (the untouched bytes Vercel attaches) first — required for the Quo webhook's
+> HMAC verification, since re-serializing the parsed JSON would not be byte-identical and would fail
+> the signature.
 
 ### Supabase Edge Functions (`supabase/functions`)
 | Function | Trigger | External | Purpose |
@@ -153,12 +181,17 @@ The two roles drive the whole architecture:
 | Function | Grants | Purpose |
 |---|---|---|
 | `get_session_by_token(token text)` | `anon`, `authenticated` | `SECURITY DEFINER` lookup of a session by `share_token`. Replaced the old public `SELECT` policy — this is the only way an anonymous reviewer resolves a share link (migration 008). |
+| `register_reviewer(token, name, browser_uuid)` | `anon`, `authenticated` | `SECURITY DEFINER` (migration 013). Validates `share_token`→session, inserts a `reviewers` row, returns its id. Replaces direct anon INSERT. |
+| `create_recording(token, reviewer_id, video_url)` | `anon`, `authenticated` | `SECURITY DEFINER` (013). Validates token→session and reviewer membership, inserts a `recordings` row, returns its id. Replaces direct anon INSERT. |
+| `add_comment(token, reviewer_id, recording_id, body_text, audio_url, anchor, timestamp_ms)` | `anon`, `authenticated` | `SECURITY DEFINER` (012). Validates token→session→reviewer→recording, inserts a `comments` row, returns its id. The only anon write path for comments. |
 
 ### Frontend data layer
 All Supabase reads/writes funnel through Zustand stores (notably `src/state/sessionStore.ts`):
 `fetchSessions`, `fetchSession`, `fetchSessionByToken`, `createSession`, `updateSession`,
-`fetchRecordings`, `fetchTranscript`, `fetchAnnotations`, `deleteSession`. Upload orchestration
-lives in `src/lib/upload.ts` and `src/lib/r2.ts`.
+`fetchRecordings`, `fetchTranscript`, `fetchAnnotations`, `fetchComments`, `deleteSession`. Upload
+orchestration lives in `src/lib/upload.ts` (now calls the `register_reviewer` / `create_recording` /
+`add_comment` RPCs for anon writes) and `src/lib/r2.ts`. Reviewer comment capture is in
+`src/state/commentStore.ts`, `src/lib/commentDictation.ts`, and `src/components/comments/*`.
 
 ---
 
@@ -180,12 +213,23 @@ All tables in `public`. UUID PKs via `pgcrypto`. (`supabase/migrations/001_initi
   owner), `confirmed`, `notes`. Owner-scoped RLS.
 - **`message_templates`** *(011)* — `owner_id`, `name`, `body` (supports `{{link}}`/`{{name}}`/
   `{{sender}}`). Owner-scoped RLS.
-- **`messages_log`** *(011)* — one row per SMS: `owner_id`, `session_id`, `contact_id`, `direction`
-  (`outgoing`|`incoming`), `quo_message_id`, `quo_conversation_id`, `from_number`, `to_number`,
-  `content`, `status`. Owner can SELECT; server (service_role) inserts. Source of truth for the
-  sent/received counts.
+- **`messages_log`** *(011, +`project_id` in 014)* — one row per SMS: `owner_id`, `session_id`,
+  `project_id`, `contact_id`, `direction` (`outgoing`|`incoming`), `quo_message_id`,
+  `quo_conversation_id`, `from_number`, `to_number`, `content`, `status`. Owner can SELECT; server
+  (service_role) inserts. Source of truth for the sent/received counts and coaching aggregation.
+- **`user_settings`** *(014)* — one row per owner: `ai_instructions`, `ai_tone`, `ai_goals`, `prefs`.
+  Per-user AI context defaults. Owner-scoped RLS.
+- **`projects`** *(014)* — `owner_id`, `name`, `description`, `ai_instructions`. A "thing you're
+  getting feedback on"; carries per-project AI context. Owner-scoped RLS.
 
-TypeScript mirrors live in `src/types/index.ts` and `src/types/annotation.ts`.
+- **`comments`** *(migration 012)* — `session_id`, `reviewer_id`, `recording_id`, `body_text`,
+  `audio_url` (voice-clip storage path), `transcript_text`, `transcript_status`
+  (`none`→`pending`→`processing`→`complete`/`failed`), `anchor` (`jsonb`:
+  `{kind:'pin'|'highlight', x, y, w?, h?}` normalized 0..1 to the artifact), `timestamp_ms`,
+  `created_at`. Reviewer pins/highlights/voice notes, buffered client-side and persisted at send time.
+  **No anon table access** — owner SELECT only; writes via the `add_comment()` RPC.
+
+TypeScript mirrors live in `src/types/index.ts`, `src/types/annotation.ts`, and `src/types/comment.ts`.
 
 ### Storage buckets
 - **`artifacts`** — sender uploads + URL-imported artifacts. Private; accessed via signed URLs.
@@ -202,9 +246,17 @@ The notable governance facts:
 
 - **Tenant isolation is RLS-enforced.** Authenticated `SELECT`/`UPDATE` policies are all scoped to
   the session owner (`auth.uid() = owner_id`, or an `EXISTS` join through `sessions`).
-- **Migration 008 (`fix_rls_data_leak`)** was a critical fix: earlier `USING (true)` SELECT policies
-  let any authenticated user read *all* sessions/recordings/reviewers/transcripts across tenants.
-  Public session SELECT was removed and replaced with the `get_session_by_token()` RPC.
+- **Migration 008 (`fix_rls_data_leak`)** removed the *authenticated* cross-tenant SELECT, but left
+  `anon USING (true)` SELECT on `reviewers`/`recordings` (for the `.insert().select()` round-trip) —
+  which was itself an **anon** cross-tenant read leak (sr-viber-surf SEC-001).
+- **Migration 013 (`lock_down_anon_writes`)** closes that: drops the anon `USING (true)` SELECT +
+  anon INSERT policies and revokes the anon table grants on `reviewers`/`recordings`/`transcripts`
+  (and the dead `sessions` grant). The two anon write paths move to share-token-gated SECURITY
+  DEFINER RPCs (`register_reviewer`, `create_recording`); `comments` (012) never had anon table
+  access. **Net: the anonymous reviewer now has zero direct table access — only the four
+  share-token RPCs.** Still open from the audit (not yet fixed): `get_session_by_token` returns
+  `owner_id` to anon (SEC-003); `quo-send` lacks recipient/link validation + rate limiting
+  (SEC-004/005); no external-API timeouts (SEC-006).
 - **Migration 009 (`fix_storage_policies`)** tightened the artifacts bucket so authenticated users
   can only sign URLs for artifacts belonging to their own sessions (join to `sessions`), while anon
   reviewers retain read for share-link flows.
@@ -243,6 +295,8 @@ The current HEAD commit stages a **Cloudflare R2** migration behind the `VITE_US
 | `/` | `Dashboard` (in `Layout`) | protected |
 | `/new` | `NewSession` | protected |
 | `/contacts` | `Contacts` | protected |
+| `/projects` | `Projects` | protected |
+| `/settings` | `Settings` | protected |
 | `/session/:id` | `SessionDetail` | protected |
 
 `ProtectedRoute` redirects unauthenticated users to `/login`. `PostHogPageview` captures SPA
@@ -280,6 +334,7 @@ npm run preview   # vite preview (built output)
 | `NEXT_QUO_API_KEY` | **server-only** | Quo API key (raw `Authorization` header, no Bearer) |
 | `QUO_FROM_NUMBER`, `QUO_USER_ID`, `QUO_PHONE_NUMBER_ID` | server | Quo workspace sender identity |
 | `QUO_WEBHOOK_KEY` | **server-only** | Quo inbound-webhook HMAC signing secret (base64) |
+| `OPENAI_PROJECT`, `OPENAI_ORGANIZATION` | server (optional) | Pin OpenAI calls to a project/org (sk-proj keys work without them) |
 
 > Server-only vars (`R2_*` creds, `SUPABASE_SERVICE_ROLE_KEY`, `FIRECRAWL_API_KEY`) must be set in
 > **both** Vercel project env vars **and** via `supabase secrets set`, because both Vercel functions
@@ -329,7 +384,32 @@ e8a257a  Add recording controls and fix mic test transcription
 009  Tighten artifact storage policies to owner-only
 010  sessions.owner_display_name
 011  Quo texting — contacts, message_templates, messages_log (+ owner-scoped RLS)
+014  AI context settings + projects + messages_log.project_id (owner-scoped RLS)
+012  comments table (reviewer pins/highlights/voice) — owner SELECT + add_comment() RPC (no anon table access)
+013  ⚠ Lock down anon writes — drop anon USING(true) SELECT + INSERT on reviewers/recordings,
+     revoke anon grants, move writes to register_reviewer()/create_recording() RPCs (fixes SEC-001)
 ```
+
+## 11. Applying migrations 012 + 013 (SQL editor path)
+
+Because this machine's CLI is a different Supabase account, apply via the **SQL editor** of the
+project that actually owns the 2cTake schema.
+
+**Preflight — confirm you're on the right project (must return all 4 rows):**
+```sql
+select table_name from information_schema.tables
+where table_schema='public' and table_name in ('reviewers','recordings','transcripts','users_2ctake')
+order by table_name;
+```
+If this returns fewer than 4 rows, you're on the wrong project (or the core schema isn't applied) —
+do **not** run 012/013 there.
+
+**Then paste, in order:** the full contents of `supabase/migrations/012_comments.sql` followed by
+`supabase/migrations/013_lock_down_anon_writes.sql`. Both are idempotent-ish (drops use
+`if exists`; functions use `create or replace`).
+
+**Also deploy** the updated edge function (voice-comment transcription branch):
+`supabase functions deploy transcribe` — from a machine/CLI logged into the correct account.
 
 ---
 

@@ -13,12 +13,18 @@ export async function openaiChat(
   const key = process.env.OPENAI_API_KEY
   if (!key) throw new Error('OPENAI_API_KEY not configured')
 
+  // Project-scoped keys (sk-proj-…) work with plain bearer auth, but we also
+  // forward optional project/org headers so calls can be pinned explicitly.
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${key}`,
+    'Content-Type': 'application/json',
+  }
+  if (process.env.OPENAI_PROJECT) headers['OpenAI-Project'] = process.env.OPENAI_PROJECT
+  if (process.env.OPENAI_ORGANIZATION) headers['OpenAI-Organization'] = process.env.OPENAI_ORGANIZATION
+
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       model: opts.model || 'gpt-4o-mini',
       messages,

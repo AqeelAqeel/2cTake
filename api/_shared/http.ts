@@ -33,19 +33,28 @@ export function preflight(): Response {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 async function readRawBody(req: any): Promise<Buffer> {
-  // If the platform already parsed/consumed the body, reconstruct from req.body.
-  if (req.readableEnded || req.body !== undefined) {
-    const b = req.body
-    if (b === undefined || b === null) return Buffer.alloc(0)
-    if (Buffer.isBuffer(b)) return b
-    if (typeof b === 'string') return Buffer.from(b)
-    return Buffer.from(JSON.stringify(b))
+  // 1. Vercel's Node runtime attaches the UNTOUCHED request bytes here after it
+  //    parses JSON. This is the only byte-exact source, required for webhook
+  //    HMAC signature verification (which must run over the raw body).
+  if (req.rawBody != null) {
+    return Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(req.rawBody)
   }
-  const chunks: Buffer[] = []
-  for await (const chunk of req) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+  // 2. Stream still readable (platform didn't consume it) — read raw bytes.
+  if (!req.readableEnded) {
+    const chunks: Buffer[] = []
+    for await (const chunk of req) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk)
+    }
+    if (chunks.length) return Buffer.concat(chunks)
   }
-  return Buffer.concat(chunks)
+  // 3. Last resort: re-serialize the parsed body. NOTE: not byte-exact, so
+  //    signature verification over this will fail — only used when nothing
+  //    else is available (and for endpoints that don't verify signatures).
+  const b = req.body
+  if (b === undefined || b === null) return Buffer.alloc(0)
+  if (Buffer.isBuffer(b)) return b
+  if (typeof b === 'string') return Buffer.from(b)
+  return Buffer.from(JSON.stringify(b))
 }
 
 async function nodeToRequest(req: any): Promise<Request> {

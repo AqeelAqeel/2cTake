@@ -1,6 +1,6 @@
 import { Outlet, Link, NavLink } from 'react-router-dom'
 import { useAuthStore } from '../state/authStore'
-import { LogOut, Play, MessageSquare } from 'lucide-react'
+import { LogOut, Play, MessageSquare, FolderKanban, Settings as SettingsIcon } from 'lucide-react'
 
 export function Layout() {
   const { user, signOut } = useAuthStore()
@@ -18,20 +18,28 @@ export function Layout() {
           </span>
         </Link>
 
-        <div className="flex items-center gap-3">
-          <NavLink
-            to="/contacts"
-            className={({ isActive }) =>
-              `flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors no-underline ${
-                isActive
-                  ? 'bg-brand-50 text-brand-700'
-                  : 'text-text-secondary hover:bg-surface-tertiary'
-              }`
-            }
-          >
-            <MessageSquare className="h-4 w-4" />
-            <span className="hidden sm:inline">Contacts</span>
-          </NavLink>
+        <div className="flex items-center gap-1 sm:gap-2">
+          {[
+            { to: '/contacts', icon: MessageSquare, label: 'Contacts' },
+            { to: '/projects', icon: FolderKanban, label: 'Projects' },
+            { to: '/settings', icon: SettingsIcon, label: 'Settings' },
+          ].map(({ to, icon: Icon, label }) => (
+            <NavLink
+              key={to}
+              to={to}
+              className={({ isActive }) =>
+                `flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors no-underline ${
+                  isActive
+                    ? 'bg-brand-50 text-brand-700'
+                    : 'text-text-secondary hover:bg-surface-tertiary'
+                }`
+              }
+            >
+              <Icon className="h-4 w-4" />
+              <span className="hidden md:inline">{label}</span>
+            </NavLink>
+          ))}
+          <div className="mx-1 h-5 w-px bg-border" />
           {user?.avatar_url ? (
             <img src={user.avatar_url} alt="" className="h-8 w-8 rounded-full" />
           ) : (

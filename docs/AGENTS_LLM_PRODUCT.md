@@ -380,11 +380,29 @@ Auto-populated by a trigger on `auth.users` INSERT/UPDATE. When a user signs in 
 | status | text | `pending --> processing --> complete --> failed` |
 | created_at | timestamptz | Auto |
 
+### `comments`
+| Column | Type | Notes |
+|--------|------|-------|
+| id | uuid | PK |
+| session_id | uuid | FK --> sessions(id), cascade delete |
+| reviewer_id | uuid | FK --> reviewers(id), cascade delete |
+| recording_id | uuid | FK --> recordings(id), cascade delete. Set at send time |
+| body_text | text | Nullable. Typed text (or live-dictated text) |
+| audio_url | text | Nullable. Storage path of the voice clip in the `recordings` bucket |
+| transcript_text | text | Nullable. Whisper transcript of the voice clip |
+| transcript_status | text | `none --> pending --> processing --> complete --> failed` |
+| anchor | jsonb | `{ kind: 'pin'\|'highlight', x, y, w?, h? }` normalized 0..1 to the artifact |
+| timestamp_ms | integer | Nullable. Offset into the recording timeline |
+| created_at | timestamptz | Auto |
+
+Comments are buffered client-side during recording (like annotation snapshots) and persisted at SEND time, once the recording row exists. Voice clips upload to the `recordings` bucket under `{sessionId}/{reviewerId}/comments/{uuid}.webm`; the `transcribe` edge function fills `transcript_text` asynchronously.
+
 ### RLS Policies (post-migration 008/009)
 - **Sessions:** Owner full CRUD (`auth.uid() = owner_id`). No public SELECT — anonymous share-token lookup via `get_session_by_token()` RPC (SECURITY DEFINER, bypasses RLS).
-- **Reviewers:** Authenticated session owners can SELECT their reviewers. Anon can SELECT (needed for `.insert().select()` pattern) and INSERT.
-- **Recordings:** Authenticated session owners can SELECT and UPDATE. Anon can SELECT (needed for `.insert().select()`) and INSERT.
+- **Reviewers:** Authenticated session owners can SELECT their reviewers. **Anon has no direct table access** (migration 013) — reviewer registration goes through the `register_reviewer()` SECURITY DEFINER RPC, keyed on `share_token`.
+- **Recordings:** Authenticated session owners can SELECT and UPDATE. **Anon has no direct table access** (migration 013) — recording creation goes through the `create_recording()` SECURITY DEFINER RPC, keyed on `share_token`. Edge functions update status via service_role.
 - **Transcripts:** Authenticated session owners can SELECT via join. INSERT/UPDATE removed (edge functions use service_role key which bypasses RLS).
+- **Comments:** Authenticated session owners can SELECT comments on their own sessions (join). **Anon has NO direct access to the table** — reviewer writes go through the `add_comment()` SECURITY DEFINER RPC, keyed on `share_token` (validates token → session → reviewer → recording before inserting, returns the new id). The reviewer never reads comments back (they're buffered client-side), so there is no anon SELECT. This deliberately avoids the `USING (true)` anon-SELECT pattern that `recordings`/`reviewers` still carry (a known cross-tenant read leak). Transcript writes use the edge function's service_role key.
 - **Storage (artifacts):** Authenticated users can only read artifacts from their own sessions (join check). Anon can read all artifacts (paths are UUIDs, only discoverable via share-token RPC).
 - **Storage (recordings):** Anon can upload. Read via signed URLs (owner) or service_role key (edge functions).
 
@@ -407,8 +425,13 @@ reviewers                   recordings --------> recordings bucket (video_url = 
   |                           |
   | N:1  (reviewer_id)        | 1:1  (recording_id, unique)
   +<--------------------------+
-                              v
-                           transcripts
+                              |
+                              +--> transcripts
+                              |
+                              +--> comments --------> recordings bucket (audio_url = voice-clip path)
+                                     (session_id, reviewer_id, recording_id;
+                                      anchor jsonb + timestamp_ms;
+                                      transcript filled by edge fn)
 ```
 
 ---
@@ -420,7 +443,9 @@ reviewers                   recordings --------> recordings bucket (video_url = 
 | `/login` | LandingPage | Public | Marketing landing page with Google OAuth sign-in |
 | `/` | Dashboard | Protected | Session list with stats, search, sort |
 | `/new` | NewSession | Protected | Create session: upload artifact, set title/context/limit |
-| `/contacts` | Contacts | Protected | Address book + templates, text review links via Quo (group chat), message counts, in-app AI assistant |
+| `/contacts` | Contacts | Protected | Address book + templates, text review links via Quo (group chat), message counts, in-app AI assistant, project tagging |
+| `/projects` | Projects | Protected | Projects (a thing you get feedback on) + per-project AI context + Feedback Coach chat |
+| `/settings` | Settings | Protected | Per-user AI context settings (instructions, tone, goals) |
 | `/session/:id` | SessionDetail | Protected | View artifact + recordings + transcripts |
 | `/review/:shareToken` | ReviewLink | Public | Full reviewer flow: name --> permissions --> record --> send |
 
@@ -694,6 +719,63 @@ Each feature is named in plain English. For each: what it does, which files are 
 
 ---
 
+### Feature: "Reviewer Comments (pins, highlights & voice notes)"
+
+**What it does:** Google-Docs-style commenting on the artifact. While recording, a reviewer
+can tap a spot to drop a **pin** comment or drag a region for a **highlight** comment, then type
+or **dictate** (voice → text) the note. Comments are anchored to the artifact (normalized coords)
+AND timestamped to the recording. The sender sees them in a **Comments tab** with audio playback
+and click-to-seek. Dictation taps the existing recording mic track, so it never interrupts the
+webcam recording.
+
+**User action:** During a review recording, tap the comment icon (top-right, below the markup
+toggle) to enter comment mode. Tap or drag on the artifact, type or hit the mic, Save. Repeat.
+Send as normal. Sender opens `/session/:id` → Comments tab.
+
+**Files touched:**
+| File | Role |
+|------|------|
+| `src/types/comment.ts` | `CommentAnchor`, `PendingComment`, `ReviewerComment` types |
+| `src/state/commentStore.ts` | Zustand: buffered comments, comment mode, draft, add/remove/reset |
+| `src/lib/commentDictation.ts` | `startDictation()` — taps existing audio track + optional live SpeechRecognition |
+| `src/components/comments/CommentLayer.tsx` | Overlay on `AnnotationCanvas`: placement, pins/highlights glued to the viewport transform, read/delete popover, hosts composer |
+| `src/components/comments/CommentComposer.tsx` | Popover: textarea + mic dictate + save/cancel |
+| `src/components/comments/CommentToggle.tsx` | Comment-mode toggle button with count badge |
+| `src/components/annotation/AnnotationCanvas.tsx` | Renders the comment layer/toggle when `enableComments` |
+| `src/pages/ReviewLink.tsx` | Resets comment store on start, passes buffered comments to upload |
+| `src/lib/upload.ts` | `persistComments()` — upload voice clips, insert rows, trigger transcription |
+| `src/lib/r2.ts` + `api/r2-presign-upload.ts` | New `comment` upload kind (key under `.../comments/`) |
+| `supabase/functions/transcribe/index.ts` | Branches on `comment_id`+`audio_path` to transcribe a voice clip |
+| `src/state/sessionStore.ts` | `fetchComments()` — loads rows + resolves audio URLs |
+| `src/pages/SessionDetail.tsx` | `CommentsPanel` (Comments tab): list, seek, audio, transcript status |
+| `supabase/migrations/012_comments.sql` | `comments` table + RLS |
+
+**Technical implementation:**
+- **Anchoring:** comment positions are normalized 0..1 against the artifact's natural dimensions.
+  `CommentLayer` mirrors the Fabric canvas `viewportTransform` (subscribes to `after:render`,
+  throttled to one rAF) so pins/highlights stay glued to the artifact through zoom/pan/resize.
+  `toScreen`/`fromScreen` convert between normalized anchors and container-relative pixels.
+- **Placement:** a capture surface (comment mode only) turns a tap (< 8px move) into a pin and a
+  drag into a highlight rect, then opens the composer. `stopPropagation` keeps the placement
+  gesture from triggering the canvas pan/zoom gestures underneath.
+- **Voice without interrupting the mic:** `startDictation(recorderStore.mediaStream)` wraps the
+  existing live audio tracks in a fresh `MediaStream` + short-lived `MediaRecorder` — the tracks
+  are shared, never re-acquired or stopped, so the main recording is untouched. Optional
+  `SpeechRecognition` populates the text live; the audio clip + async Whisper transcript are the
+  source of truth.
+- **Persistence:** comments are buffered client-side during recording, then `persistComments()`
+  runs at send time (after the recording row exists): upload each voice clip (`comment` presign
+  kind → R2, or Supabase Storage), insert the row via the **`add_comment` RPC** (share_token-scoped
+  SECURITY DEFINER — anon has no direct table access), and fire the `transcribe` edge function with
+  `{ comment_id, audio_path }`. The RPC returns the new comment id, so there's no anon read-back.
+- **Sender side:** `fetchComments()` loads rows (joined with reviewer name), resolves `audio_url`
+  paths to playable URLs (R2 presign or signed URL), and re-fetches while any clip is still
+  transcribing. `CommentsPanel` renders each comment with anchor type, text/transcript, an
+  `<audio>` player, and a timestamp button that seeks the video; the active comment highlights in
+  sync with `currentTime`.
+
+---
+
 ### Feature: "Contacts & Texting (Quo)"
 
 **What it does:** Senders keep an address book, save reusable message templates, and text a session's
@@ -735,6 +817,39 @@ the side panel.
 
 ---
 
+### Feature: "AI Context Settings, Projects & Feedback Coaching"
+
+**What it does:** Persistent settings that inform every AI touchpoint. Users set global AI context
+(`/settings`); create Projects (`/projects`) — "a thing you're getting feedback on" — each with its
+own AI context; and chat with a Feedback Coach that aggregates the replies collected for a project.
+
+**Files touched:**
+| File | Role |
+|------|------|
+| `src/pages/Settings.tsx` | Per-user AI context form |
+| `src/pages/Projects.tsx` | Projects CRUD + per-project AI context + coach |
+| `src/components/CoachChat.tsx` | Feedback-aggregation coaching chat |
+| `src/state/settingsStore.ts` | user_settings + projects CRUD |
+| `api/coach.ts` | Aggregates inbound feedback (owner-scoped) → AI coaching chat |
+| `api/_shared/settings.ts` | `loadAiContext()` — composes user+project AI context into a system prompt |
+| `supabase/migrations/014_ai_settings_projects.sql` | `user_settings`, `projects`, `messages_log.project_id` |
+
+**Technical implementation:**
+- AI context layers: `user_settings` defaults + optional per-`projects` `ai_instructions`, loaded by
+  `loadAiContext()` and injected as an extra system message into `/api/assistant`, the SMS bot
+  (`/api/quo-webhook`), and `/api/coach`.
+- `/api/coach` pulls the owner's inbound `messages_log` (optionally by `project_id`), maps
+  `contact_id → name`, and builds a digest. **It passes names, not phone numbers, to the model** —
+  usernames and cell numbers are never correlated. Reviewer transcripts are wired to join in once
+  that schema exists.
+- Sends from `/contacts` accept a `projectId` so replies aggregate under the right project.
+- Multi-tenancy: `user_settings`/`projects` are owner-scoped via `auth.uid()` RLS; server pipelines
+  use service_role.
+- OpenAI: project-scoped key (`sk-proj-…`) verified working; `_shared/openai.ts` also forwards
+  optional `OpenAI-Project`/`OpenAI-Organization` headers.
+
+---
+
 ## 10. Project Structure
 
 ```
@@ -744,17 +859,21 @@ the side panel.
 │   ├── App.tsx                     # BrowserRouter, ProtectedRoute, route definitions
 │   ├── index.css                   # Tailwind v4 imports + design tokens (@theme)
 │   ├── types/
-│   │   └── index.ts                # All TypeScript interfaces: Session, Recording, Transcript, etc.
+│   │   ├── index.ts                # All TypeScript interfaces: Session, Recording, Transcript, etc.
+│   │   ├── annotation.ts           # Annotation tool/snapshot types
+│   │   └── comment.ts              # CommentAnchor, PendingComment, ReviewerComment
 │   ├── lib/
 │   │   ├── supabase.ts             # createClient() with env vars, singleton export
 │   │   ├── recorder.ts             # RecordingEngine class: WebRTC MediaRecorder wrapper
-│   │   ├── upload.ts               # uploadRecording(), registerReviewer()
+│   │   ├── upload.ts               # uploadRecording(), persistComments(), registerReviewer()
+│   │   ├── commentDictation.ts     # startDictation(): taps existing mic track + SpeechRecognition
 │   │   └── transcription.ts        # pollTranscript(), formatTimestamp()
 │   ├── state/
 │   │   ├── authStore.ts            # Zustand: user, initialize(), signInWithGoogle(), signOut()
-│   │   ├── sessionStore.ts         # Zustand: sessions[], CRUD, recordings, transcripts
+│   │   ├── sessionStore.ts         # Zustand: sessions[], CRUD, recordings, transcripts, comments
 │   │   ├── recorderStore.ts        # Zustand: recorder state machine, blob, duration, progress
-│   │   └── annotationStore.ts      # Zustand: annotation snapshots, tools, recording sync
+│   │   ├── annotationStore.ts      # Zustand: annotation snapshots, tools, recording sync
+│   │   └── commentStore.ts         # Zustand: buffered comments, comment mode, draft
 │   ├── pages/
 │   │   ├── LandingPage.tsx         # Marketing landing page with Google OAuth sign-in
 │   │   ├── Dashboard.tsx           # Session list: search, sort, stats, table/grid views
@@ -779,6 +898,10 @@ the side panel.
 │           ├── ToolPalette.tsx         # Floating annotation toolbar: pen, circle, rect, eraser, select + sub-palettes
 │           ├── StickyToggle.tsx        # Toggle button to enable/disable annotation drawing mode
 │           └── ZoomIndicator.tsx       # Zoom % display with preset dropdown
+│       └── comments/
+│           ├── CommentLayer.tsx        # Overlay: place/render pins+highlights glued to viewport, hosts composer
+│           ├── CommentComposer.tsx     # Popover: text + mic dictation, save/cancel
+│           └── CommentToggle.tsx       # Comment-mode toggle button with count badge
 ├── supabase/
 │   ├── migrations/
 │   │   ├── 001_initial.sql         # Full schema: sessions, reviewers, recordings, transcripts + RLS
@@ -789,10 +912,12 @@ the side panel.
 │   │   ├── 007_fix_reviewer_rls.sql    # Grants table-level permissions, baseline RLS
 │   │   ├── 008_fix_rls_data_leak.sql   # Tightens RLS: scoped SELECT, get_session_by_token() RPC
 │   │   ├── 009_fix_storage_policies.sql # Tightens artifact storage: owner-only for auth, open for anon
-│   │   └── 010_owner_display_name.sql   # Adds owner_display_name to sessions for reviewer personalization
+│   │   ├── 010_owner_display_name.sql   # Adds owner_display_name to sessions for reviewer personalization
+│   │   ├── 011_quo_contacts_messaging.sql # contacts, message_templates, messages_log (Quo)
+│   │   └── 012_comments.sql            # comments table (reviewer pins/highlights/voice) + RLS
 │   └── functions/
 │       ├── transcribe/
-│       │   └── index.ts            # Edge function: download video → Whisper API → store transcript
+│       │   └── index.ts            # Edge function: download video → Whisper → transcript; also voice-comment branch (comment_id+audio_path → comments.transcript_text)
 │       └── fetch-artifact/
 │           └── index.ts            # Edge function: URL → PDF/screenshot → storage upload
 ├── .env.example                    # Required env vars template
@@ -861,6 +986,10 @@ the side panel.
 ### `annotationStore` (Zustand) — `src/state/annotationStore.ts`
 
 Manages annotation canvas state during recording: active tool, stroke history, snapshot capture synced to recording timeline. Snapshots are uploaded alongside the recording blob and replayed on the session detail page.
+
+### `commentStore` (Zustand) — `src/state/commentStore.ts`
+
+Buffers reviewer comments during a recording (the way `annotationStore` buffers snapshots). Holds `comments[]` (each with anchor, timestamp, text, optional audio blob), the `commentMode` flag, and the current `draft` (a placed-but-uncommitted anchor with the composer open). Nothing hits the network here — comments and their voice clips are persisted at SEND time via `persistComments()` once the recording row exists.
 
 ---
 
@@ -936,10 +1065,14 @@ QUO_WEBHOOK_KEY=...           # base64 HMAC secret for the inbound webhook
 - Copy share link to clipboard
 - URL-based artifact import (Google Docs, Google Slides, generic web pages via Firecrawl)
 - Interactive annotation canvas for reviewer markup (synced to recording timeline)
+- Reviewer comments: anchored pins / highlights + text or voice-dictated notes (audio + Whisper transcript), shown to the sender in a Comments tab with seek + audio playback
 - Marketing landing page with scroll-reveal animations
 - Tightened RLS: scoped multi-tenant data access, SECURITY DEFINER RPC for share-token lookup
 
 ### NOT shipped (future)
+- Sender-authored comments + reviewer↔sender comment threads/replies
+- On-artifact comment pins on the *sender* playback canvas (Comments are list-only for the sender today)
+- Editing a comment after the take is sent
 - Screen share recording
 - AI analysis / insights beyond transcription
 - Team features / multi-sender
@@ -1045,5 +1178,6 @@ When adding features, update this doc. Below are implementation guides for commo
 
 ---
 
-*Last updated: 2026-06-30 (Quo texting: /contacts route, contacts/templates/messages_log tables (migration 011), /api/quo-send + /api/quo-webhook + /api/assistant, in-app + SMS AI bot)*
+*Last updated: 2026-07-01 (AI context settings + Projects + Feedback Coach: migration 014 user_settings/projects/messages_log.project_id, /settings + /projects routes, /api/coach, loadAiContext wired into assistant/SMS bot/coach, OpenAI project-key headers, webhook rawBody signature fix)*
+*Prev: 2026-06-30 (Reviewer comments: pins/highlights + text/voice notes, migration 012 comments table, commentStore + CommentLayer/Composer/Toggle, persistComments + transcribe voice-comment branch, sender Comments tab)*
 *Update this file whenever you make structural changes to the codebase.*
