@@ -8,15 +8,20 @@ import { useAnnotationTools } from './useAnnotationTools'
 import { ZoomIndicator } from './ZoomIndicator'
 import { ToolPalette } from './ToolPalette'
 import { StickyToggle } from './StickyToggle'
+import { CommentLayer } from '../comments/CommentLayer'
+import { CommentToggle } from '../comments/CommentToggle'
+import { useCommentStore } from '../../state/commentStore'
 
 interface AnnotationCanvasProps {
   url: string
   type: 'pdf' | 'image' | 'document'
   className?: string
+  /** Enables the reviewer comment layer (pins / highlights / voice notes). */
+  enableComments?: boolean
   onCanvasReady?: (lowerCanvas: HTMLCanvasElement, upperCanvas: HTMLCanvasElement) => void
 }
 
-export function AnnotationCanvas({ url, type, className = '', onCanvasReady }: AnnotationCanvasProps) {
+export function AnnotationCanvas({ url, type, className = '', enableComments = false, onCanvasReady }: AnnotationCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasElRef = useRef<HTMLCanvasElement>(null)
   const canvasRef = useRef<FabricCanvas | null>(null)
@@ -25,8 +30,15 @@ export function AnnotationCanvas({ url, type, className = '', onCanvasReady }: A
   const [loading, setLoading] = useState(true)
   const [fitZoom, setFitZoom] = useState(1)
   const [bgDimensions, setBgDimensions] = useState({ width: 0, height: 0 })
+  const [canvasInstance, setCanvasInstance] = useState<FabricCanvas | null>(null)
   const bgDimensionsRef = useRef({ width: 0, height: 0 })
   const fitZoomRef = useRef(1)
+
+  const {
+    commentMode,
+    comments,
+    setCommentMode,
+  } = useCommentStore()
 
   const {
     activeTool,
@@ -62,11 +74,13 @@ export function AnnotationCanvas({ url, type, className = '', onCanvasReady }: A
     })
 
     canvasRef.current = canvas
+    setCanvasInstance(canvas)
 
     return () => {
       canvas.dispose()
       initialized.current = false
       canvasRef.current = null
+      setCanvasInstance(null)
     }
   }, [])
 
@@ -337,6 +351,21 @@ export function AnnotationCanvas({ url, type, className = '', onCanvasReady }: A
         enabled={annotationEnabled}
         onToggle={() => setAnnotationEnabled(!annotationEnabled)}
       />
+
+      {enableComments && (
+        <>
+          <CommentToggle
+            enabled={commentMode}
+            count={comments.length}
+            onToggle={() => setCommentMode(!commentMode)}
+          />
+          <CommentLayer
+            canvas={canvasInstance}
+            bgWidth={bgDimensions.width}
+            bgHeight={bgDimensions.height}
+          />
+        </>
+      )}
     </div>
   )
 }

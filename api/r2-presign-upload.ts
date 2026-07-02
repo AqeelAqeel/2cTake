@@ -23,15 +23,15 @@
 import { AwsClient } from 'aws4fetch'
 import { createClient } from '@supabase/supabase-js'
 
-type UploadKind = 'recording' | 'annotation' | 'artifact'
+type UploadKind = 'recording' | 'annotation' | 'artifact' | 'comment'
 
 interface PresignRequest {
   kind: UploadKind
   contentType: string
-  // recording + annotation
+  // recording + annotation + comment
   shareToken?: string
   reviewerId?: string
-  // annotation only
+  // annotation + comment
   recordingId?: string
   // artifact only
   ext?: string
@@ -154,7 +154,7 @@ export default async function handler(req: Request): Promise<Response> {
   let key: string
 
   try {
-    if (kind === 'recording' || kind === 'annotation') {
+    if (kind === 'recording' || kind === 'annotation' || kind === 'comment') {
       const { shareToken, reviewerId } = body
       if (!shareToken || !reviewerId) {
         return json({ error: 'shareToken and reviewerId are required' }, 400)
@@ -190,13 +190,13 @@ export default async function handler(req: Request): Promise<Response> {
         const objectId = globalThis.crypto.randomUUID()
         key = `${session.id}/${reviewerId}/${objectId}.webm`
       } else {
-        // annotation
+        // annotation + comment — both must reference an existing recording
+        // that belongs to this session + reviewer.
         const { recordingId } = body
         if (!recordingId) {
-          return json({ error: 'recordingId is required for annotation uploads' }, 400)
+          return json({ error: `recordingId is required for ${kind} uploads` }, 400)
         }
 
-        // Verify the recording exists AND belongs to this session + reviewer
         const { data: recording, error: recErr } = await sb
           .from('recordings')
           .select('id')
@@ -209,7 +209,13 @@ export default async function handler(req: Request): Promise<Response> {
           return json({ error: 'Recording does not belong to this reviewer' }, 403)
         }
 
-        key = `${session.id}/${reviewerId}/${recordingId}_annotations.json`
+        if (kind === 'annotation') {
+          key = `${session.id}/${reviewerId}/${recordingId}_annotations.json`
+        } else {
+          // comment voice clip — server-chosen object id under a comments/ prefix
+          const objectId = globalThis.crypto.randomUUID()
+          key = `${session.id}/${reviewerId}/comments/${objectId}.webm`
+        }
       }
     } else if (kind === 'artifact') {
       // Authenticated sender upload — verify via Supabase JWT

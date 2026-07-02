@@ -10,14 +10,14 @@
 > | **Doc generated** | 2026-06-30 |
 > | **Companion doc** | [`AGENTS_LLM_PRODUCT.md`](./AGENTS_LLM_PRODUCT.md) — deep product/agent narrative · [`COMMENTS_SPEC.md`](./COMMENTS_SPEC.md) — reviewer comments spec |
 
-> **⚠ Database provisioning caveat (2026-06-30).** Production `VITE_SUPABASE_URL` resolves to project
-> `jrvwmkgembuqvedynrne`, but that project (as reachable from this machine's CLI account) does **not**
-> contain 2cTake's core tables (`reviewers`, `recordings`, `transcripts`, `users_2ctake`) and its
-> `public.sessions` has a foreign shape (`id, user_id, title, created_at, updated_at`). This machine's
-> Supabase CLI is logged into a **different account** than the one that owns the real 2cTake schema, so
-> migrations here are applied via the **Supabase SQL editor** (browser, correct account), not the CLI /
-> Management API. Before applying migrations, run the preflight query (below, §11) to confirm the target
-> project actually has the 2cTake core tables.
+> **✅ Database (resolved 2026-07-01).** 2cTake runs on its own dedicated Supabase project
+> **`urhqlefvqgsrxmbiglau`** (name "2cTake", us-east-1). The earlier prod linkage pointed at the wrong
+> project (`jrvwmkgembuqvedynrne`, "salience site db") which never had 2cTake's tables. The dedicated
+> project was rebuilt from scratch (migrations 001→013 + buckets via `docs/wipe-and-bootstrap-2ctake.sql`),
+> Vercel env repointed, edge functions deployed, and Google OAuth enabled. See
+> [`SETUP_2CTAKE.md`](./SETUP_2CTAKE.md) for the full runbook + the remaining Google Cloud Console step.
+> Note: this machine's Supabase CLI is a **different account** than the one owning `urhqlefvqgsrxmbiglau`;
+> operations use a PAT for that account via the Management API / `SUPABASE_ACCESS_TOKEN`.
 
 ---
 

@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import type { Session, Recording, Transcript } from '../types'
 import type { AnnotationSnapshot } from '../types/annotation'
+import type { ReviewerComment } from '../types/comment'
 import {
   isR2Enabled,
   presignDownload,
@@ -44,6 +45,7 @@ interface SessionState {
   recordings: Recording[]
   transcripts: Record<string, Transcript>
   annotations: Record<string, AnnotationSnapshot[]>
+  comments: Record<string, ReviewerComment[]>
   loading: boolean
   error: string | null
 
@@ -64,6 +66,7 @@ interface SessionState {
   fetchRecordings: (sessionId: string) => Promise<void>
   fetchTranscript: (recordingId: string) => Promise<void>
   fetchAnnotations: (recording: Recording) => Promise<void>
+  fetchComments: (recording: Recording) => Promise<void>
   deleteSession: (id: string) => Promise<void>
 }
 
@@ -73,6 +76,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   recordings: [],
   transcripts: {},
   annotations: {},
+  comments: {},
   loading: false,
   error: null,
 
@@ -353,6 +357,62 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     } catch {
       // No annotations for this recording — that's fine
     }
+  },
+
+  fetchComments: async (recording: Recording) => {
+    // Re-fetch while any voice note is still transcribing so the panel updates;
+    // otherwise serve the cached set.
+    const existing = get().comments[recording.id]
+    if (
+      existing &&
+      !existing.some(
+        (c) => c.transcript_status === 'pending' || c.transcript_status === 'processing'
+      )
+    ) {
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('comments')
+      .select('*, reviewer:reviewers(name)')
+      .eq('recording_id', recording.id)
+      .order('timestamp_ms', { ascending: true, nullsFirst: true })
+      .order('created_at', { ascending: true })
+
+    if (error || !data) return
+
+    const rows = data as ReviewerComment[]
+
+    // Resolve voice-clip storage paths to playable URLs.
+    const paths = rows.map((r) => r.audio_url).filter(Boolean) as string[]
+    let urlMap: Record<string, string> = {}
+    if (paths.length > 0) {
+      if (isR2Enabled()) {
+        try {
+          urlMap = await presignDownload(paths)
+        } catch (err) {
+          console.error('[fetchComments] R2 presign failed:', err)
+        }
+      } else {
+        await Promise.all(
+          paths.map(async (p) => {
+            const { data: signed } = await supabase.storage
+              .from('recordings')
+              .createSignedUrl(p, 3600)
+            if (signed?.signedUrl) urlMap[p] = signed.signedUrl
+          })
+        )
+      }
+    }
+
+    const resolved = rows.map((r) => ({
+      ...r,
+      audio_url: r.audio_url ? urlMap[r.audio_url] ?? r.audio_url : null,
+    }))
+
+    set((state) => ({
+      comments: { ...state.comments, [recording.id]: resolved },
+    }))
   },
 
   deleteSession: async (id: string) => {

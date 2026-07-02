@@ -14,7 +14,7 @@
 
 import { supabase } from './supabase'
 
-export type UploadKind = 'recording' | 'annotation' | 'artifact'
+export type UploadKind = 'recording' | 'annotation' | 'artifact' | 'comment'
 
 export interface PresignedUpload {
   url: string
@@ -25,10 +25,10 @@ export interface PresignedUpload {
 export interface PresignUploadArgs {
   kind: UploadKind
   contentType: string
-  // recording + annotation
+  // recording + annotation + comment
   shareToken?: string
   reviewerId?: string
-  // annotation only
+  // annotation + comment (must reference an existing recording)
   recordingId?: string
   // artifact only
   ext?: string

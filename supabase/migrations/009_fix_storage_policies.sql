@@ -16,6 +16,9 @@ DROP POLICY IF EXISTS "Anyone can read artifacts" ON storage.objects;
 -- Authenticated users: can only access artifacts from their own sessions.
 -- Uses a join to sessions table instead of storage.objects.owner because
 -- the fetch-artifact edge function uploads with service_role (owner != user).
+-- (drop-if-exists so this migration / the bootstrap is safe to re-run —
+--  storage.objects policies survive a `drop schema public cascade`.)
+DROP POLICY IF EXISTS "Owner can read own artifacts" ON storage.objects;
 CREATE POLICY "Owner can read own artifacts"
   ON storage.objects FOR SELECT
   TO authenticated
@@ -31,6 +34,7 @@ CREATE POLICY "Owner can read own artifacts"
 -- Anon (reviewers): can generate signed URLs for artifacts.
 -- Artifact paths are UUIDs and only discoverable via the
 -- get_session_by_token() RPC function (migration 008).
+DROP POLICY IF EXISTS "Anon can read artifacts for review" ON storage.objects;
 CREATE POLICY "Anon can read artifacts for review"
   ON storage.objects FOR SELECT
   TO anon

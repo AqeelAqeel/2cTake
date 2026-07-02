@@ -16,6 +16,8 @@ import {
   FileText,
   PenLine,
   MessageSquare,
+  Mic,
+  MapPin,
   Users,
   Minus,
   PanelLeft,
@@ -25,6 +27,7 @@ import {
 } from 'lucide-react'
 import { formatTimestamp } from '../lib/transcription'
 import type { Recording } from '../types'
+import type { ReviewerComment } from '../types/comment'
 
 // ── Avatar helpers ───────────────────────────────────────────────────────────
 
@@ -494,25 +497,127 @@ function MarkupsPanel({
   )
 }
 
-// ── Notes Tab ────────────────────────────────────────────────────────────────
+// ── Comments Tab ─────────────────────────────────────────────────────────────
 
-function NotesPanel() {
+function CommentsPanel({
+  comments,
+  onTimestampClick,
+  currentTime,
+}: {
+  comments: ReviewerComment[]
+  onTimestampClick: (seconds: number) => void
+  currentTime: number
+}) {
+  if (comments.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-16 text-[var(--color-timestamp)]">
+        <MessageSquare className="h-8 w-8" />
+        <p className="text-sm" style={{ fontFamily: 'var(--font-serif)' }}>
+          No comments in this review
+        </p>
+        <p className="text-xs text-text-muted max-w-[260px] text-center leading-relaxed">
+          Reviewers can drop pinned notes and voice comments on the artifact while they record.
+        </p>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col items-center gap-3 py-16 text-[var(--color-timestamp)]">
-      <MessageSquare className="h-8 w-8" />
-      <p className="text-sm" style={{ fontFamily: 'var(--font-serif)' }}>
-        Notes coming soon
-      </p>
-      <p className="text-xs text-text-muted max-w-[240px] text-center leading-relaxed">
-        You&rsquo;ll be able to jot down thoughts and action items for each review.
-      </p>
+    <div className="flex flex-col">
+      {comments.map((c, i) => {
+        const seconds = c.timestamp_ms != null ? Math.floor(c.timestamp_ms / 1000) : null
+        const isActive =
+          seconds != null &&
+          currentTime >= seconds &&
+          (i === comments.length - 1 ||
+            comments[i + 1].timestamp_ms == null ||
+            currentTime < Math.floor(comments[i + 1].timestamp_ms! / 1000))
+        const isVoice = !!c.audio_url
+        // What text to show: typed body, else the voice transcript, else a status line.
+        const body =
+          c.body_text ||
+          c.transcript_text ||
+          (isVoice
+            ? c.transcript_status === 'failed'
+              ? 'Voice note (transcription failed)'
+              : 'Voice note (transcribing…)'
+            : '')
+
+        return (
+          <div
+            key={c.id}
+            className="flex gap-3 sm:gap-4"
+            style={{
+              padding: '14px 16px',
+              borderLeft: isActive
+                ? '3px solid var(--color-brand-500)'
+                : '3px solid transparent',
+              backgroundColor: isActive ? 'var(--color-warm-highlight)' : 'transparent',
+            }}
+          >
+            {/* Timestamp (click to seek) */}
+            <button
+              onClick={() => seconds != null && onTimestampClick(seconds)}
+              disabled={seconds == null}
+              className="shrink-0 text-[12px] font-medium font-mono tabular-nums disabled:cursor-default"
+              style={{
+                color: isActive ? 'var(--color-brand-600)' : 'var(--color-timestamp)',
+              }}
+            >
+              {seconds != null ? formatTimestamp(seconds) : '—'}
+            </button>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+                  style={{
+                    backgroundColor: 'var(--color-brand-100)',
+                    color: 'var(--color-brand-600)',
+                  }}
+                >
+                  {i + 1}
+                </span>
+                {isVoice ? (
+                  <Mic className="h-3 w-3 text-goblin-pink" />
+                ) : (
+                  <MapPin className="h-3 w-3 text-text-muted" />
+                )}
+                <span className="text-[10px] uppercase tracking-wide text-text-muted">
+                  {c.anchor?.kind === 'highlight' ? 'Highlight' : 'Pin'}
+                  {c.reviewer?.name ? ` · ${c.reviewer.name}` : ''}
+                </span>
+              </div>
+
+              <p
+                className="mt-1 text-[14px] leading-relaxed"
+                style={{
+                  fontFamily: 'var(--font-serif)',
+                  color: body ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                }}
+              >
+                {body}
+              </p>
+
+              {isVoice && c.audio_url && (
+                <audio
+                  controls
+                  preload="none"
+                  src={c.audio_url}
+                  className="mt-2 h-8 w-full max-w-[260px]"
+                />
+              )}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-type TabKey = 'transcript' | 'markups' | 'notes'
+type TabKey = 'transcript' | 'markups' | 'comments'
 
 export function SessionDetail() {
   const { id } = useParams<{ id: string }>()
@@ -522,11 +627,13 @@ export function SessionDetail() {
     recordings,
     transcripts,
     annotations,
+    comments,
     loading,
     fetchSession,
     fetchRecordings,
     fetchTranscript,
     fetchAnnotations,
+    fetchComments,
     deleteSession,
   } = useSessionStore()
 
@@ -550,9 +657,12 @@ export function SessionDetail() {
     if (selectedRecording) {
       fetchTranscript(selectedRecording)
       const rec = recordings.find((r) => r.id === selectedRecording)
-      if (rec) fetchAnnotations(rec)
+      if (rec) {
+        fetchAnnotations(rec)
+        fetchComments(rec)
+      }
     }
-  }, [selectedRecording, fetchTranscript, fetchAnnotations, recordings])
+  }, [selectedRecording, fetchTranscript, fetchAnnotations, fetchComments, recordings])
 
   useEffect(() => {
     if (recordings.length > 0 && !selectedRecording) {
@@ -602,6 +712,9 @@ export function SessionDetail() {
   const activeAnnotations = selectedRecording
     ? annotations[selectedRecording] ?? []
     : []
+  const activeComments = selectedRecording
+    ? comments[selectedRecording] ?? []
+    : []
 
   const activeName = activeRecording?.reviewer?.name || 'Anonymous'
   const activeColors = getAvatarColor(activeName)
@@ -609,7 +722,7 @@ export function SessionDetail() {
   const tabs: { key: TabKey; label: string; icon: typeof FileText; count?: number }[] = [
     { key: 'transcript', label: 'Transcript', icon: FileText },
     { key: 'markups', label: 'Markups', icon: PenLine, count: activeAnnotations.length },
-    { key: 'notes', label: 'Notes', icon: MessageSquare },
+    { key: 'comments', label: 'Comments', icon: MessageSquare, count: activeComments.length },
   ]
 
   return (
@@ -859,7 +972,13 @@ export function SessionDetail() {
                     currentTime={currentTime}
                   />
                 )}
-                {activeTab === 'notes' && <NotesPanel />}
+                {activeTab === 'comments' && (
+                  <CommentsPanel
+                    comments={activeComments}
+                    onTimestampClick={handleTimestampClick}
+                    currentTime={currentTime}
+                  />
+                )}
               </div>
             </div>
           </>

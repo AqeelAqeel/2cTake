@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useSessionStore } from '../state/sessionStore'
 import { useRecorderStore } from '../state/recorderStore'
 import { useAnnotationStore } from '../state/annotationStore'
+import { useCommentStore } from '../state/commentStore'
 import { uploadRecording, registerReviewer } from '../lib/upload'
 import { ArtifactViewer } from '../components/ArtifactViewer'
 import { AnnotationCanvas } from '../components/annotation/AnnotationCanvas'
@@ -62,9 +63,9 @@ export function ReviewLink() {
   }, [shareToken, fetchSessionByToken])
 
   const handleStartReview = async () => {
-    if (!session || !name.trim()) return
+    if (!session || !name.trim() || !shareToken) return
     try {
-      const id = await registerReviewer(session.id, name.trim())
+      const id = await registerReviewer(shareToken, name.trim())
       setReviewerId(id)
       setStep('onboarding')
     } catch (err: unknown) {
@@ -79,6 +80,7 @@ export function ReviewLink() {
     recorderStore.setMediaStream(stream)
     recorderStore.reset()
     useAnnotationStore.getState().reset()
+    useCommentStore.getState().reset()
     setStep('countdown')
   }, [recorderStore])
 
@@ -129,6 +131,7 @@ export function ReviewLink() {
       setUploadStatus('uploading')
 
       const snapshots = useAnnotationStore.getState().snapshots
+      const comments = useCommentStore.getState().comments
 
       try {
         await uploadRecording(
@@ -139,7 +142,8 @@ export function ReviewLink() {
           (pct) => {
             recorderStore.setUploadProgress(pct)
           },
-          snapshots.length > 0 ? snapshots : undefined
+          snapshots.length > 0 ? snapshots : undefined,
+          comments.length > 0 ? comments : undefined
         )
         setUploadStatus('success')
         setStep('done')
@@ -325,6 +329,7 @@ export function ReviewLink() {
             url={session.artifact_url}
             type={session.artifact_type}
             className="h-full w-full"
+            enableComments
             onCanvasReady={handleCanvasReady}
           />
         )}

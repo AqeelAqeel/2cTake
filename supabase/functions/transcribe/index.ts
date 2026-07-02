@@ -74,12 +74,69 @@ Deno.serve(async (req) => {
       )
     }
 
-    const { recording_id, video_path } = await req.json()
+    const payload = await req.json()
+    const { recording_id, video_path, comment_id, audio_path } = payload
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
+
+    // ── Comment voice-note path ────────────────────────────────────────────
+    // A reviewer comment with a dictated audio clip. Same Whisper call, but we
+    // only need the flat text and we write it back to `comments`.
+    if (comment_id && audio_path) {
+      await supabase
+        .from('comments')
+        .update({ transcript_status: 'processing' })
+        .eq('id', comment_id)
+
+      try {
+        const audioBlob = await downloadRecording(supabase, audio_path)
+
+        const commentForm = new FormData()
+        commentForm.append('file', audioBlob, 'comment.webm')
+        commentForm.append('model', 'whisper-1')
+        commentForm.append('response_format', 'json')
+
+        const commentRes = await fetch(
+          'https://api.openai.com/v1/audio/transcriptions',
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${apiKey}` },
+            body: commentForm,
+          }
+        )
+
+        if (!commentRes.ok) {
+          const errorBody = await commentRes.text()
+          throw new Error(`Whisper API error ${commentRes.status}: ${errorBody}`)
+        }
+
+        const commentResult = await commentRes.json()
+        await supabase
+          .from('comments')
+          .update({
+            transcript_text: (commentResult.text || '').trim(),
+            transcript_status: 'complete',
+          })
+          .eq('id', comment_id)
+
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      } catch (err) {
+        console.error('Comment transcription error:', err)
+        await supabase
+          .from('comments')
+          .update({ transcript_status: 'failed' })
+          .eq('id', comment_id)
+        return new Response(
+          JSON.stringify({ error: (err as Error).message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
 
     // Update recording status
     await supabase

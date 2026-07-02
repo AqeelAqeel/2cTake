@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import type { AnnotationSnapshot } from '../types/annotation'
+import type { PendingComment } from '../types/comment'
 import { isR2Enabled, presignUpload, putToR2 } from './r2'
 
 /**
@@ -26,7 +27,8 @@ export async function uploadRecording(
   reviewerId: string,
   shareToken: string | undefined,
   onProgress?: (pct: number) => void,
-  annotations?: AnnotationSnapshot[]
+  annotations?: AnnotationSnapshot[],
+  comments?: PendingComment[]
 ): Promise<{ videoUrl: string; recordingId: string }> {
   let videoPath: string
 
@@ -66,20 +68,21 @@ export async function uploadRecording(
     videoPath = fileName
   }
 
-  // 3. Store the storage PATH (not a URL) — matches current schema in both paths
-  const { data: recording, error: dbError } = await supabase
-    .from('recordings')
-    .insert({
-      session_id: sessionId,
-      reviewer_id: reviewerId,
-      video_url: videoPath,
-      duration: 0,
-      status: 'uploaded',
-    })
-    .select()
-    .single()
+  // 3. Store the storage PATH (not a URL) via a share_token-scoped RPC.
+  //    Anon has no direct INSERT/SELECT on `recordings` (see migration 013) —
+  //    create_recording validates token -> session -> reviewer and returns the id.
+  if (!shareToken) {
+    throw new Error('shareToken is required to create a recording')
+  }
+  const { data: recordingId, error: dbError } = await supabase.rpc('create_recording', {
+    p_token: shareToken,
+    p_reviewer_id: reviewerId,
+    p_video_url: videoPath,
+  })
 
-  if (dbError) throw new Error(`Save failed: ${dbError.message}`)
+  if (dbError || !recordingId) {
+    throw new Error(`Save failed: ${dbError?.message ?? 'no recording id returned'}`)
+  }
   onProgress?.(85)
 
   // 4. Trigger transcription (edge function resolves video_path against the
@@ -87,7 +90,7 @@ export async function uploadRecording(
   //    when they're set)
   try {
     await supabase.functions.invoke('transcribe', {
-      body: { recording_id: recording.id, video_path: videoPath },
+      body: { recording_id: recordingId, video_path: videoPath },
     })
   } catch {
     // Transcription is async — failure here is non-blocking
@@ -107,11 +110,11 @@ export async function uploadRecording(
           contentType: 'application/json',
           shareToken,
           reviewerId,
-          recordingId: recording.id,
+          recordingId: recordingId,
         })
         await putToR2(annotationPresigned, annotationBlob)
       } else {
-        const annotationPath = `${sessionId}/${reviewerId}/${recording.id}_annotations.json`
+        const annotationPath = `${sessionId}/${reviewerId}/${recordingId}_annotations.json`
         await supabase.storage
           .from('recordings')
           .upload(annotationPath, annotationBlob, {
@@ -124,16 +127,114 @@ export async function uploadRecording(
     }
   }
 
+  // 6. Persist reviewer comments (pins / highlights / voice notes). Each voice
+  //    note's audio clip uploads to the recordings bucket, then transcription is
+  //    triggered. Non-blocking — a failed comment never fails the recording.
+  if (comments && comments.length > 0) {
+    await persistComments(comments, {
+      sessionId,
+      reviewerId,
+      recordingId: recordingId,
+      shareToken,
+    })
+  }
+
   onProgress?.(100)
 
   return {
     videoUrl: videoPath,
-    recordingId: recording.id,
+    recordingId: recordingId,
+  }
+}
+
+/**
+ * Persists buffered reviewer comments after the recording row exists.
+ *
+ * For each comment:
+ *   1. If it has a voice clip, upload it (R2 presign or Supabase Storage).
+ *   2. Insert the row via the `add_comment` RPC — a SECURITY DEFINER function
+ *      keyed on the session `share_token`. The reviewer (anon) has NO direct
+ *      table access; the RPC validates token -> session -> reviewer -> recording
+ *      before inserting and returns the new comment id.
+ *   3. If audio was stored, fire the `transcribe` edge function for it.
+ *
+ * `shareToken` is required: it's the reviewer's authorization for the write.
+ */
+export async function persistComments(
+  comments: PendingComment[],
+  ctx: {
+    sessionId: string
+    reviewerId: string
+    recordingId: string
+    shareToken: string | undefined
+  }
+): Promise<void> {
+  if (!ctx.shareToken) {
+    console.warn('Cannot persist comments without a share token')
+    return
+  }
+
+  for (const c of comments) {
+    let audioPath: string | null = null
+
+    if (c.audioBlob && c.audioBlob.size > 0) {
+      try {
+        if (isR2Enabled()) {
+          const presigned = await presignUpload({
+            kind: 'comment',
+            contentType: c.audioBlob.type || 'audio/webm',
+            shareToken: ctx.shareToken,
+            reviewerId: ctx.reviewerId,
+            recordingId: ctx.recordingId,
+          })
+          await putToR2(presigned, c.audioBlob)
+          audioPath = presigned.key
+        } else {
+          const path = `${ctx.sessionId}/${ctx.reviewerId}/comments/${crypto.randomUUID()}.webm`
+          const { error } = await supabase.storage
+            .from('recordings')
+            .upload(path, c.audioBlob, {
+              contentType: c.audioBlob.type || 'audio/webm',
+              upsert: false,
+            })
+          if (error) throw error
+          audioPath = path
+        }
+      } catch (err) {
+        console.warn('Comment audio upload failed, saving comment without audio:', err)
+        audioPath = null
+      }
+    }
+
+    const { data: commentId, error } = await supabase.rpc('add_comment', {
+      p_token: ctx.shareToken,
+      p_reviewer_id: ctx.reviewerId,
+      p_recording_id: ctx.recordingId,
+      p_body_text: c.bodyText || null,
+      p_audio_url: audioPath,
+      p_anchor: c.anchor,
+      p_timestamp_ms: c.timestampMs,
+    })
+
+    if (error || !commentId) {
+      console.warn('Comment insert failed, skipping:', error?.message)
+      continue
+    }
+
+    if (audioPath) {
+      try {
+        await supabase.functions.invoke('transcribe', {
+          body: { comment_id: commentId, audio_path: audioPath },
+        })
+      } catch {
+        console.warn('Comment transcription trigger failed, will retry later')
+      }
+    }
   }
 }
 
 export async function registerReviewer(
-  sessionId: string,
+  shareToken: string,
   name: string
 ): Promise<string> {
   let browserUuid = localStorage.getItem('2ctake_browser_uuid')
@@ -142,16 +243,17 @@ export async function registerReviewer(
     localStorage.setItem('2ctake_browser_uuid', browserUuid)
   }
 
-  const { data, error } = await supabase
-    .from('reviewers')
-    .insert({
-      session_id: sessionId,
-      name,
-      browser_uuid: browserUuid,
-    })
-    .select()
-    .single()
+  // Anon has no direct INSERT/SELECT on `reviewers` (migration 013). The
+  // register_reviewer RPC validates the share_token -> session and returns the
+  // new reviewer id.
+  const { data: reviewerId, error } = await supabase.rpc('register_reviewer', {
+    p_token: shareToken,
+    p_name: name,
+    p_browser_uuid: browserUuid,
+  })
 
-  if (error) throw new Error(`Registration failed: ${error.message}`)
-  return data.id
+  if (error || !reviewerId) {
+    throw new Error(`Registration failed: ${error?.message ?? 'no reviewer id returned'}`)
+  }
+  return reviewerId as string
 }
