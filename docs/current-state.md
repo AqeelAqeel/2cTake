@@ -390,26 +390,30 @@ e8a257a  Add recording controls and fix mic test transcription
      revoke anon grants, move writes to register_reviewer()/create_recording() RPCs (fixes SEC-001)
 ```
 
-## 11. Applying migrations 012 + 013 (SQL editor path)
+## 11. Applying migrations (direct DB connection)
 
-Because this machine's CLI is a different Supabase account, apply via the **SQL editor** of the
-project that actually owns the 2cTake schema.
+**Current status: prod (`urhqlefvqgsrxmbiglau`) has migrations 001→014 fully applied (11 tables).**
 
-**Preflight — confirm you're on the right project (must return all 4 rows):**
-```sql
-select table_name from information_schema.tables
-where table_schema='public' and table_name in ('reviewers','recordings','transcripts','users_2ctake')
-order by table_name;
+This machine's Supabase CLI is a different account, but the project's **session-pooler connection
+string is in `.env.local` as `SUPABASE_DB_URL`** (gitignored, project-scoped). That means migrations
+can be run **programmatically against prod without the CLI or a PAT**:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install psycopg2-binary   # pip is PEP-668 externally-managed
+.venv/bin/python - <<'PY'
+import os, re, psycopg2
+url=[l.split('=',1)[1].strip().strip('"') for l in open('.env.local') if l.startswith('SUPABASE_DB_URL=')][0]
+c=psycopg2.connect(url, sslmode="require"); c.autocommit=True
+c.cursor().execute(open('supabase/migrations/0XX_whatever.sql').read())
+PY
 ```
-If this returns fewer than 4 rows, you're on the wrong project (or the core schema isn't applied) —
-do **not** run 012/013 there.
 
-**Then paste, in order:** the full contents of `supabase/migrations/012_comments.sql` followed by
-`supabase/migrations/013_lock_down_anon_writes.sql`. Both are idempotent-ish (drops use
-`if exists`; functions use `create or replace`).
+The migration files are all idempotent (drops use `if exists`, functions `create or replace`, tables
+`if not exists`), so re-running is safe. `docs/bootstrap-2ctake.sql` (fresh) and
+`docs/wipe-and-bootstrap-2ctake.sql` (wipe+rebuild) bundle 001→014 + buckets for a full rebuild.
 
-**Also deploy** the updated edge function (voice-comment transcription branch):
-`supabase functions deploy transcribe` — from a machine/CLI logged into the correct account.
+Edge functions deploy with `SUPABASE_ACCESS_TOKEN=<pat> supabase functions deploy <fn> --project-ref urhqlefvqgsrxmbiglau`
+(needs a PAT for that account — the direct DB URL can't deploy functions). See `docs/SETUP_2CTAKE.md`.
 
 ---
 
