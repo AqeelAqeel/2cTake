@@ -5,6 +5,7 @@ import {
   Upload, Link2, FileText, Video, Clock, Mic,
   PenTool, ArrowRight, Play, Check,
   ChevronDown, Eye, Sparkles, Users,
+  Send, Eraser, Circle, Square, MapPin,
 } from 'lucide-react'
 
 /* ────────────────────────────────────────────
@@ -47,8 +48,8 @@ function Reveal({ children, delay = 0, className = '' }: {
 /* ────────────────────────────────────────────
    App window mockup shell
    ──────────────────────────────────────────── */
-function MockupWindow({ title, children, className = '' }: {
-  title: string; children: React.ReactNode; className?: string
+function MockupWindow({ title, children, className = '', noPad = false }: {
+  title: string; children: React.ReactNode; className?: string; noPad?: boolean
 }) {
   return (
     <div className={`rounded-xl border border-white/10 bg-[#0C0C0C] overflow-hidden shadow-2xl ${className}`}>
@@ -60,7 +61,29 @@ function MockupWindow({ title, children, className = '' }: {
         </div>
         <span className="text-[11px] text-gray-500 ml-2 font-medium">{title}</span>
       </div>
-      <div className="p-5">{children}</div>
+      <div className={noPad ? '' : 'p-5'}>{children}</div>
+    </div>
+  )
+}
+
+/* ────────────────────────────────────────────
+   Light app window shell — matches the real
+   authenticated app's light/warm theme
+   ──────────────────────────────────────────── */
+function LightWindow({ title, children, className = '' }: {
+  title: string; children: React.ReactNode; className?: string
+}) {
+  return (
+    <div className={`rounded-xl border border-white/10 bg-white overflow-hidden shadow-2xl ${className}`}>
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-200 bg-slate-50">
+        <div className="flex gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-[#FF5F57]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#FEBC2E]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#28C840]" />
+        </div>
+        <span className="text-[11px] text-slate-400 ml-2 font-medium">{title}</span>
+      </div>
+      {children}
     </div>
   )
 }
@@ -116,137 +139,291 @@ function CTAButton({ onClick, children, size = 'lg' }: {
    MOCKUP COMPONENTS
    ═══════════════════════════════════════════════ */
 
+/* Mirrors src/pages/NewSession.tsx — the real one-time upload form */
 function MockupUpload() {
   return (
-    <MockupWindow title="New Session">
-      <div className="border-2 border-dashed border-white/10 rounded-lg p-8 text-center mb-5">
-        <Upload className="w-8 h-8 text-gray-500 mx-auto mb-2" />
-        <p className="text-gray-400 text-sm">Drop your PDF, design, or doc</p>
-        <p className="text-gray-600 text-xs mt-1">or click to browse</p>
-      </div>
-      <div className="flex items-center gap-3 rounded-lg bg-white/5 px-4 py-3">
-        <FileText className="w-5 h-5 text-goblin-pink" />
-        <div className="min-w-0">
-          <p className="text-sm text-white truncate">Q3-Brand-Deck.pdf</p>
-          <p className="text-xs text-gray-500">2.4 MB</p>
+    <LightWindow title="2ctake.app/new">
+      <div className="p-5 space-y-4">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Session title</p>
+          <div className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 font-medium">Q3 Brand Deck</div>
         </div>
-        <Check className="w-4 h-4 text-goblin-green ml-auto shrink-0" />
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Instructions for reviewers</p>
+          <div className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-500">be brutal — especially the pricing slide 🙏</div>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Recording time limit</p>
+          <div className="flex flex-wrap gap-1.5">
+            {['No limit', '1 min', '2 min', '3 min', '5 min'].map((t) => (
+              <span key={t} className={`rounded-full px-3 py-1 text-xs font-medium ${t === '2 min' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{t}</span>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="flex gap-1.5 mb-2">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-brand-50 text-brand-700 px-2.5 py-1 text-xs font-semibold"><Upload className="w-3 h-3" /> Upload file</span>
+            <span className="inline-flex items-center gap-1.5 rounded-lg text-slate-400 px-2.5 py-1 text-xs font-medium"><Link2 className="w-3 h-3" /> Paste URL</span>
+          </div>
+          <div className="border-2 border-dashed border-slate-200 rounded-lg px-3 py-2.5 flex items-center gap-3">
+            <FileText className="w-5 h-5 text-goblin-pink shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm text-slate-800 truncate">Q3-Brand-Deck.pdf</p>
+              <p className="text-[11px] text-slate-400">12 pages · 2.4 MB</p>
+            </div>
+            <Check className="w-4 h-4 text-goblin-green ml-auto shrink-0" />
+          </div>
+        </div>
+        <div className="w-full rounded-xl bg-brand-600 text-white text-sm font-semibold py-2.5 text-center">Create session</div>
       </div>
-    </MockupWindow>
+    </LightWindow>
   )
 }
 
+/* Mirrors the NewSession success state — link ready to share */
 function MockupShare() {
   return (
-    <MockupWindow title="Session Created">
-      <div className="text-center mb-5">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-goblin-green-dim mb-3">
-          <Check className="w-6 h-6 text-goblin-green" />
+    <LightWindow title="2ctake.app — session created">
+      <div className="p-5">
+        <div className="text-center mb-5">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-goblin-green-dim mb-3">
+            <Check className="w-6 h-6 text-goblin-green" />
+          </div>
+          <p className="text-slate-900 font-semibold">Your review link is ready</p>
+          <p className="text-xs text-slate-400 mt-1">One link — reuse it for every reviewer.</p>
         </div>
-        <p className="text-white font-medium">Your review link is ready</p>
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <Link2 className="w-4 h-4 text-slate-400 shrink-0" />
+          <span className="text-sm text-slate-600 truncate font-mono">2ctake.app/review/a8x3kw</span>
+          <span className="ml-auto shrink-0 text-xs bg-brand-600 text-white font-semibold px-3 py-1.5 rounded-md">Copy</span>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-slate-200 text-center py-2 text-xs font-medium text-slate-600">View session</div>
+          <div className="rounded-lg border border-slate-200 py-2 text-xs font-medium text-slate-600 inline-flex items-center justify-center gap-1.5 w-full"><Send className="w-3 h-3 text-goblin-pink" /> Text it out</div>
+        </div>
+        <p className="text-xs text-slate-400 text-center mt-4">Reviewers don't need an account — no app, no signup.</p>
       </div>
-      <div className="flex items-center gap-2 bg-white/5 rounded-lg px-4 py-3">
-        <Link2 className="w-4 h-4 text-gray-500 shrink-0" />
-        <span className="text-sm text-gray-300 truncate font-mono">2ctake.app/review/a8x3kw</span>
-        <button className="ml-auto shrink-0 text-xs bg-goblin-green text-black font-semibold px-3 py-1.5 rounded-md">
-          Copy
-        </button>
-      </div>
-      <p className="text-xs text-gray-500 text-center mt-4">
-        Reviewers don't need an account
-      </p>
-    </MockupWindow>
+    </LightWindow>
   )
 }
 
+/* Mirrors the real reviewer recording surface — ReviewLink.tsx:
+   white artifact, Fabric annotations, comment pin + voice dictation,
+   PiP webcam, floating tool palette */
 function MockupReview() {
   return (
-    <MockupWindow title="Recording — Q3 Brand Deck">
-      <div className="grid grid-cols-5 gap-3">
-        {/* Artifact with annotations */}
-        <div className="col-span-3 rounded-lg bg-white/5 p-4 relative min-h-[140px]">
-          <div className="space-y-2">
-            {[85, 70, 90, 60, 95, 75].map((w, i) => (
-              <div key={i} className="h-1.5 bg-white/8 rounded" style={{ width: `${w}%` }} />
+    <MockupWindow title="2ctake.app/review/a8x3kw — Sarah's take" noPad>
+      <div className="relative bg-[#0A0A0F] p-4 pb-14 min-h-[250px]">
+        {/* Artifact — a real white page like the live recording surface */}
+        <div className="relative rounded-md bg-white shadow-lg p-4 mr-20">
+          <div className="h-2.5 w-2/3 rounded bg-slate-300 mb-3" />
+          <div className="space-y-1.5">
+            {[95, 88, 92, 70, 90, 60].map((w, i) => (
+              <div key={i} className="h-1.5 rounded bg-slate-200" style={{ width: `${w}%` }} />
             ))}
           </div>
-          {/* Annotation marks */}
-          <div className="absolute top-6 right-6 w-14 h-7 border-2 border-goblin-pink rounded-sm opacity-80" />
-          <svg className="absolute bottom-8 left-6 opacity-80" width="50" height="24">
-            <path d="M0,20 Q12,0 25,12 T50,8" stroke="#1DB954" strokeWidth="2" fill="none" />
+          <div className="mt-3 h-10 rounded border border-slate-200 bg-slate-50" />
+          {/* Annotations */}
+          <svg className="absolute top-9 left-3 opacity-90" width="70" height="26">
+            <path d="M2,20 Q18,2 36,14 T68,8" stroke="#1DB954" strokeWidth="2.5" fill="none" strokeLinecap="round" />
           </svg>
-          <div className="absolute bottom-3 right-3">
-            <PenTool className="w-3.5 h-3.5 text-goblin-pink/60" />
+          <div className="absolute bottom-3 left-4 right-8 h-11 rounded-md border-2 border-goblin-pink opacity-90" />
+          {/* Positional comment pin */}
+          <div className="absolute -top-2 right-5 w-5 h-5 rounded-full bg-goblin-pink text-white text-[10px] font-bold flex items-center justify-center shadow-lg">1</div>
+        </div>
+        {/* Comment composer — voice dictation */}
+        <div className="absolute top-9 right-3 w-44 rounded-xl border border-white/10 bg-[#15151C] p-2.5 shadow-2xl">
+          <p className="text-[10px] text-gray-300 leading-snug">"the headline undersells it — lead with the number"</p>
+          <div className="flex items-center gap-1.5 mt-2">
+            <span className="w-5 h-5 rounded-full bg-goblin-pink flex items-center justify-center animate-pulse-dot"><Mic className="w-2.5 h-2.5 text-white" /></span>
+            <span className="text-[9px] text-gray-500 font-mono">0:06</span>
+            <span className="ml-auto rounded bg-goblin-green px-2 py-0.5 text-[9px] font-bold text-black">Save</span>
           </div>
         </div>
-        {/* Camera + controls */}
-        <div className="col-span-2 flex flex-col gap-3">
-          <div className="aspect-[4/3] rounded-lg bg-white/5 flex items-center justify-center">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-goblin-pink/30 to-goblin-green/30 flex items-center justify-center">
-              <Users className="w-4 h-4 text-white/50" />
-            </div>
-          </div>
-          <div className="flex items-center gap-2 justify-center">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse-dot" />
-            <span className="text-[11px] text-red-400 font-semibold">REC</span>
-            <span className="text-[11px] text-gray-400 ml-1 font-mono">03:42</span>
-          </div>
+        {/* Webcam PiP + REC */}
+        <div className="absolute bottom-12 right-3 w-16 h-12 rounded-lg bg-gradient-to-br from-goblin-pink/40 to-goblin-green/40 border border-white/20 shadow-xl flex items-center justify-center">
+          <Users className="w-4 h-4 text-white/60" />
+        </div>
+        <div className="absolute bottom-5 right-3 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse-dot" />
+          <span className="text-[10px] text-red-400 font-semibold">REC</span>
+          <span className="text-[10px] text-gray-400 font-mono">00:47</span>
+        </div>
+        {/* Floating markup tool palette */}
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-white/10 bg-black/70 backdrop-blur px-3 py-1.5">
+          <span className="p-1 rounded-full bg-white/15"><PenTool className="w-3 h-3 text-white" /></span>
+          <Circle className="w-3 h-3 text-gray-500" />
+          <Square className="w-3 h-3 text-gray-500" />
+          <Eraser className="w-3 h-3 text-gray-500" />
+          <span className="w-px h-3 bg-white/10" />
+          <span className="w-3 h-3 rounded-full bg-[#ef4444] ring-2 ring-white/40" />
+          <span className="w-3 h-3 rounded-full bg-[#22c55e]" />
+          <span className="w-3 h-3 rounded-full bg-[#3b82f6]" />
         </div>
       </div>
     </MockupWindow>
   )
 }
 
+/* Mirrors src/pages/SessionDetail.tsx — warm sender dashboard with
+   reviewer statuses and the Transcript / Markups / Comments tabs.
+   The tabs actually switch. */
 function MockupResults() {
+  const [tab, setTab] = useState<'Transcript' | 'Markups' | 'Comments'>('Transcript')
   return (
-    <MockupWindow title="Q3 Brand Deck — 3 recordings">
-      <div className="grid grid-cols-5 gap-3">
-        {/* Video player + transcript */}
-        <div className="col-span-3 space-y-3">
-          <div className="aspect-video rounded-lg bg-white/5 relative overflow-hidden">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
-                <Play className="w-4 h-4 text-white ml-0.5" />
-              </div>
-            </div>
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
-              <div className="h-full w-2/5 bg-goblin-pink rounded-r" />
-            </div>
-          </div>
-          <div className="bg-white/5 rounded-lg p-3 space-y-1.5">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider font-semibold mb-2">Transcript</p>
+    <LightWindow title="2ctake.app/session — Q3 Brand Deck">
+      <div className="bg-surface-warm p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+          {/* Reviewer list with statuses */}
+          <div className="sm:col-span-2 space-y-2">
+            <p className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">Reviews (3)</p>
             {[
-              ['0:00', '"So first thing I notice is the headline…"'],
-              ['0:15', '"This color palette feels a bit off here…"'],
-              ['0:34', '"Love this section though, really strong…"'],
-            ].map(([t, text]) => (
-              <div key={t} className="flex gap-2">
-                <span className="text-[11px] text-goblin-green font-mono shrink-0">{t}</span>
-                <span className="text-[11px] text-gray-400">{text}</span>
+              { name: 'Sarah J.', dur: '4:32', status: 'Ready', ready: true, active: true },
+              { name: 'Mike R.', dur: '2:15', status: 'Transcribing', ready: false, active: false },
+              { name: 'Alex C.', dur: '6:03', status: 'Ready', ready: true, active: false },
+            ].map((r) => (
+              <div key={r.name} className={`rounded-lg border bg-white px-2.5 py-2 ${r.active ? 'border-brand-300 shadow-sm' : 'border-warm-border'}`}>
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-goblin-pink/60 to-goblin-green/60 flex items-center justify-center text-[9px] font-bold text-white shrink-0">{r.name[0]}</div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-medium text-slate-800 truncate">{r.name}</p>
+                    <p className="text-[9px] text-slate-400 font-mono">{r.dur}</p>
+                  </div>
+                </div>
+                <span className={`mt-1.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[8px] font-semibold ${r.ready ? 'bg-goblin-green-dim text-goblin-green' : 'bg-amber-100 text-amber-600'}`}>
+                  {!r.ready && <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse-dot" />}
+                  {r.status}
+                </span>
               </div>
             ))}
           </div>
-        </div>
-        {/* Recordings list */}
-        <div className="col-span-2 space-y-2">
-          {[
-            { name: 'Sarah J.', dur: '4:32', init: 'S' },
-            { name: 'Mike R.', dur: '2:15', init: 'M' },
-            { name: 'Alex C.', dur: '6:03', init: 'A' },
-          ].map((r) => (
-            <div key={r.name} className="flex items-center gap-2.5 rounded-lg bg-white/5 px-3 py-2">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-goblin-pink/50 to-goblin-green/50 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
-                {r.init}
+          {/* Player + tabs */}
+          <div className="sm:col-span-3 space-y-2.5">
+            <div className="aspect-video rounded-lg bg-slate-900 relative overflow-hidden">
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center"><Play className="w-3.5 h-3.5 text-white ml-0.5" /></div>
               </div>
+              <div className="absolute bottom-0 inset-x-0 h-1 bg-white/15"><div className="h-full w-2/5 bg-goblin-pink" /></div>
+            </div>
+            <div className="flex gap-1 border-b border-warm-border">
+              {(['Transcript', 'Markups', 'Comments'] as const).map((t) => (
+                <button key={t} onClick={() => setTab(t)}
+                  className={`px-2 py-1.5 text-[10px] font-semibold transition-colors ${tab === t ? 'text-slate-900 border-b-2 border-brand-500 -mb-px' : 'text-slate-400 hover:text-slate-600'}`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+            <div className="min-h-[84px] space-y-1">
+              {tab === 'Transcript' && [
+                { t: '0:00', text: 'so first thing I notice is the headline…', active: false },
+                { t: '0:15', text: 'this pricing table is doing way too much…', active: true },
+                { t: '0:34', text: 'love this section though — really strong', active: false },
+              ].map((row) => (
+                <div key={row.t} className={`flex gap-2 rounded px-1.5 py-1 ${row.active ? 'bg-warm-highlight border-l-2 border-brand-500' : ''}`}>
+                  <span className="text-[10px] text-goblin-green font-mono shrink-0">{row.t}</span>
+                  <span className="text-[10px] text-slate-600">"{row.text}"</span>
+                </div>
+              ))}
+              {tab === 'Markups' && [
+                { t: '0:15', icon: Square, color: 'text-goblin-pink', text: 'boxed the pricing table' },
+                { t: '0:29', icon: PenTool, color: 'text-goblin-green', text: 'underlined the headline' },
+                { t: '0:51', icon: Circle, color: 'text-goblin-pink', text: 'circled the CTA button' },
+              ].map((m) => (
+                <div key={m.t} className="flex items-center gap-2 rounded px-1.5 py-1">
+                  <span className="text-[10px] text-goblin-green font-mono shrink-0">{m.t}</span>
+                  <m.icon className={`w-3 h-3 shrink-0 ${m.color}`} />
+                  <span className="text-[10px] text-slate-600">{m.text}</span>
+                </div>
+              ))}
+              {tab === 'Comments' && (
+                <>
+                  <div className="flex items-start gap-2 rounded px-1.5 py-1">
+                    <MapPin className="w-3 h-3 text-goblin-pink shrink-0 mt-0.5" />
+                    <span className="text-[10px] text-slate-600">"the headline undersells it — lead with the number"</span>
+                  </div>
+                  <div className="flex items-center gap-2 rounded px-1.5 py-1">
+                    <Mic className="w-3 h-3 text-goblin-green shrink-0" />
+                    <span className="flex items-end gap-0.5 h-3">
+                      {[4, 7, 10, 6, 9, 5, 8, 4, 7].map((h, i) => (
+                        <span key={i} className="w-0.5 rounded bg-goblin-green/60" style={{ height: `${h}px` }} />
+                      ))}
+                    </span>
+                    <span className="text-[9px] text-slate-400 font-mono">0:09 · voice note</span>
+                  </div>
+                  <div className="flex items-start gap-2 rounded px-1.5 py-1">
+                    <MapPin className="w-3 h-3 text-goblin-green shrink-0 mt-0.5" />
+                    <span className="text-[10px] text-slate-600">"ship it. this slide alone sells me"</span>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+        <p className="text-center text-[9px] text-slate-400 mt-3">↑ the tabs work — this is the real layout</p>
+      </div>
+    </LightWindow>
+  )
+}
+
+/* Mirrors src/pages/Contacts.tsx — text a review link to your saved
+   contacts with reusable templates, up to 10 people per group text */
+function MockupContacts() {
+  return (
+    <LightWindow title="2ctake.app/contacts — Contacts & Texting">
+      <div className="p-5 grid md:grid-cols-5 gap-5">
+        {/* Composer */}
+        <div className="md:col-span-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Text a review link</p>
+            <div className="flex gap-1.5">
+              <span className="rounded-full bg-goblin-green-dim text-goblin-green px-2 py-0.5 text-[9px] font-semibold">24 sent</span>
+              <span className="rounded-full bg-goblin-pink-dim text-goblin-pink px-2 py-0.5 text-[9px] font-semibold">9 replies</span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-700 flex items-center justify-between gap-1">Q3 Brand Deck <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" /></div>
+            <div className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] text-slate-700 flex items-center justify-between gap-1">template: casual ask <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" /></div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] leading-relaxed text-slate-600 font-mono">
+            yo <span className="text-goblin-green font-semibold">{'{{name}}'}</span> — got 90 seconds? need your honest take on this: <span className="text-goblin-pink font-semibold">{'{{link}}'}</span>
+          </div>
+          <div>
+            <p className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold mb-1">Live preview → Sarah</p>
+            <div className="inline-block max-w-[85%] rounded-2xl rounded-bl-md bg-slate-100 px-3 py-2 text-[11px] text-slate-700">
+              yo Sarah — got 90 seconds? need your honest take on this: <span className="text-brand-600 underline">2ctake.app/review/a8x3kw</span>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {['Sarah', 'Mike', 'Priya'].map((n) => (
+              <span key={n} className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 text-brand-700 px-2 py-0.5 text-[10px] font-medium"><Check className="w-2.5 h-2.5" /> {n}</span>
+            ))}
+            <span className="rounded-full border border-slate-200 text-slate-400 px-2 py-0.5 text-[10px]">+ 7 more</span>
+            <span className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-brand-600 text-white px-3 py-1.5 text-[11px] font-semibold"><Send className="w-3 h-3" /> Send group text (3)</span>
+          </div>
+        </div>
+        {/* Contacts list + assistant */}
+        <div className="md:col-span-2 space-y-2 md:border-l md:border-slate-100 md:pl-5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Contacts · 24</p>
+          {[
+            { n: 'Sarah Johnson', p: '(415) 555-0132' },
+            { n: 'Mike Rivera', p: '(628) 555-0198' },
+            { n: 'Priya Patel', p: '(510) 555-0173' },
+          ].map((c) => (
+            <div key={c.n} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-goblin-green shrink-0" />
               <div className="min-w-0">
-                <p className="text-xs text-white truncate">{r.name}</p>
-                <p className="text-[10px] text-gray-500">{r.dur}</p>
+                <p className="text-[11px] font-medium text-slate-800 truncate">{c.n}</p>
+                <p className="text-[9px] text-slate-400 font-mono">{c.p}</p>
               </div>
             </div>
           ))}
+          <div className="rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-2 flex items-center gap-2">
+            <Sparkles className="w-3 h-3 text-goblin-pink shrink-0" />
+            <p className="text-[10px] text-slate-500 italic">ask the assistant: "who hasn't replied yet?"</p>
+          </div>
         </div>
       </div>
-    </MockupWindow>
+    </LightWindow>
   )
 }
 
@@ -340,6 +517,14 @@ export function LandingPage() {
         </div>
 
         <div className="relative z-10 text-center max-w-4xl mx-auto px-6">
+          {/* The lovechild line */}
+          <div className="mb-6 inline-flex items-center rounded-full border border-white/10 bg-white/[0.03] px-5 py-2 backdrop-blur-sm">
+            <p className="text-sm md:text-base font-medium text-white tracking-wide">
+              if <span className="text-goblin-green font-bold">Loom</span> and <span className="text-goblin-pink font-bold">Zoom</span> did the{' '}
+              <span className="italic font-black bg-gradient-to-r from-goblin-green to-goblin-pink bg-clip-text text-transparent">boom boom</span>
+            </p>
+          </div>
+
           {/* Brand */}
           <div className="mb-8">
             <BrandText className="text-5xl sm:text-7xl md:text-8xl font-black tracking-tight" />
@@ -493,7 +678,7 @@ export function LandingPage() {
                   Send a magic link to your reviewers
                 </h3>
                 <p className="text-gray-400 leading-relaxed">
-                  One link. No sign-ups. No app downloads. Your reviewers click, and they're in. It's that simple. You can send it over Slack, email, text — whatever.
+                  One link. No sign-ups. No app downloads. Your reviewers click, and they're in. Send it over Slack, email — or blast it to your saved contacts as a group text, straight from the app.
                 </p>
               </div>
             </Reveal>
@@ -511,7 +696,7 @@ export function LandingPage() {
                   They hit record and just… talk
                 </h3>
                 <p className="text-gray-400 leading-relaxed">
-                  Stream of consciousness. No forms, no structured questions. They see your work, react naturally, draw on it, circle things, point stuff out. All while being recorded. It takes them 5 minutes and saves you weeks of back-and-forth.
+                  Stream of consciousness. No forms, no structured questions. They see your work, react naturally, draw on it, circle things, drop pinned comments — even dictate voice notes. All while being recorded. It takes them 5 minutes and saves you weeks of back-and-forth.
                 </p>
               </div>
             </Reveal>
@@ -539,12 +724,41 @@ export function LandingPage() {
                   Get transcripts, timestamps, and video
                 </h3>
                 <p className="text-gray-400 leading-relaxed">
-                  Every recording lands in your dashboard with a full transcript, timestamped annotations synced to the video, and the raw footage of your reviewers reacting. Click a timestamp, jump to that moment. It's all there.
+                  Every recording lands in your dashboard with a full transcript, timestamped markups synced to the video, pinned comments, and the raw footage of your reviewers reacting. Click a timestamp, jump to that moment. It's all there.
                 </p>
               </div>
             </Reveal>
           </div>
 
+        </div>
+      </section>
+
+
+      {/* ─── MESSAGING MULTIPLE PARTIES ─── */}
+      <section className="py-20 md:py-32 px-6 relative">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/3 right-1/4 w-[400px] h-[400px] bg-goblin-pink/8 rounded-full blur-[140px]" />
+        </div>
+        <div className="relative z-10 max-w-4xl mx-auto">
+          <Reveal>
+            <p className="text-center text-xs uppercase tracking-[0.2em] text-gray-500 mb-4 font-medium">
+              Mission control
+            </p>
+            <h2 className="text-center text-3xl md:text-4xl font-bold text-white mb-6">
+              One artifact.{' '}
+              <span className="bg-gradient-to-r from-goblin-green to-goblin-pink bg-clip-text text-transparent">
+                Your whole crew.
+              </span>
+            </h2>
+            <p className="text-center text-gray-400 max-w-2xl mx-auto mb-14 leading-relaxed">
+              Save your people once. Then blast any review link out as a group text — with reusable
+              templates that fill in each person's name and your link automatically. Every take and
+              every reply lands back in one dashboard.
+            </p>
+          </Reveal>
+          <Reveal delay={150}>
+            <MockupContacts />
+          </Reveal>
         </div>
       </section>
 
