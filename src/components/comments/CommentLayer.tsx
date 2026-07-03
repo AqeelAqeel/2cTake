@@ -31,17 +31,22 @@ export function CommentLayer({ canvas, bgWidth, bgHeight }: CommentLayerProps) {
   const { comments, commentMode, draft, openDraft, cancelDraft, addComment, removeComment } =
     useCommentStore()
 
-  // Track the layer's own width (for clamping the composer popover on-screen)
-  // via a ResizeObserver, so we never read a ref during render.
-  const [layerW, setLayerW] = useState(0)
+  // Track the layer's own size (for keeping the composer popover on-screen) via
+  // a ResizeObserver, so we never read a ref during render. Depend on bgWidth
+  // too: the measured div only mounts once the background has loaded (see the
+  // `bgWidth === 0` early-return below), and `canvas` alone doesn't change at
+  // that point — without bgWidth in the deps the effect would run while the ref
+  // is still null and the size would stay 0.
+  const [layerSize, setLayerSize] = useState({ w: 0, h: 0 })
   useEffect(() => {
     const el = rootRef.current
     if (!el) return
-    const ro = new ResizeObserver(() => setLayerW(el.clientWidth))
+    const measure = () => setLayerSize({ w: el.clientWidth, h: el.clientHeight })
+    const ro = new ResizeObserver(measure)
     ro.observe(el)
-    setLayerW(el.clientWidth)
+    measure()
     return () => ro.disconnect()
-  }, [canvas])
+  }, [canvas, bgWidth])
 
   // Bump on every canvas render so pin positions follow pan/zoom. Throttled to
   // one update per animation frame to avoid thrashing React during gestures.
@@ -225,7 +230,8 @@ export function CommentLayer({ canvas, bgWidth, bgHeight }: CommentLayerProps) {
           />
           <CommentComposer
             screen={draft.screen}
-            layerWidth={layerW || 320}
+            layerWidth={layerSize.w || 320}
+            layerHeight={layerSize.h || 480}
             recordingStream={recordingStream}
             onSave={(input) => addComment(input)}
             onCancel={cancelDraft}

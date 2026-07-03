@@ -22,6 +22,7 @@
 
 import { AwsClient } from 'aws4fetch'
 import { createClient } from '@supabase/supabase-js'
+import { json, webHandler } from './_shared/http.js'
 
 type UploadKind = 'recording' | 'annotation' | 'artifact' | 'comment'
 
@@ -44,15 +45,6 @@ interface PresignResponse {
 }
 
 const PRESIGN_TTL_SECONDS = 300 // 5 min — upload must START within this window
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-    },
-  })
 
 function getR2Client() {
   const accessKeyId = process.env.R2_ACCESS_KEY_ID
@@ -107,7 +99,7 @@ function sanitizeExt(ext: string | undefined): string {
   return cleaned || 'bin'
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default webHandler(async function handler(req: Request): Promise<Response> {
   // Minimal CORS (same-origin Vercel deploy; localhost dev)
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -252,4 +244,4 @@ export default async function handler(req: Request): Promise<Response> {
     console.error('[r2-presign-upload] error:', err)
     return json({ error: (err as Error).message || 'Internal error' }, 500)
   }
-}
+})

@@ -18,21 +18,13 @@
 
 import { AwsClient } from 'aws4fetch'
 import { createClient } from '@supabase/supabase-js'
+import { json, webHandler } from './_shared/http.js'
 
 interface PresignDownloadRequest {
   keys: string[]
 }
 
 const PRESIGN_TTL_SECONDS = 3600 // 1 hour — matches old Supabase signed URL TTL
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store',
-    },
-  })
 
 function getR2Client() {
   const accessKeyId = process.env.R2_ACCESS_KEY_ID
@@ -86,7 +78,7 @@ function parseSessionIdFromKey(key: string): string | null {
   return parts[0]
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default webHandler(async function handler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
@@ -181,4 +173,4 @@ export default async function handler(req: Request): Promise<Response> {
 
   const urls = Object.fromEntries(entries)
   return json({ urls })
-}
+})

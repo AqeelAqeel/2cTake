@@ -4,7 +4,7 @@
 //   - presignUpload()      — POST /api/r2-presign-upload
 //   - putToR2()            — browser XHR PUT with real byte progress
 //   - presignDownload()    — POST /api/r2-presign-download (batch)
-//   - publicArtifactUrl()  — synchronous URL join for the public bucket
+//   - publicArtifactUrl()  — synchronous same-origin /api/artifact proxy URL
 //   - isR2Enabled()        — feature-flag gate for migration
 //
 // Why XHR instead of fetch: the Fetch API does not expose upload progress
@@ -43,22 +43,29 @@ export function isR2Enabled(): boolean {
 }
 
 /**
- * Returns a synchronous public URL for an artifact key.
+ * Returns a synchronous same-origin URL for an artifact key.
  *
- * The artifacts bucket is public-read via an R2.dev subdomain (or a custom
- * domain bound to the bucket). Legacy rows that already contain an absolute
- * URL are passed through untouched so the dual-read fallback works during
- * migration.
+ * Artifacts are served through GET /api/artifact rather than the bucket's
+ * r2.dev subdomain: pdf.js and the Fabric annotation canvas both need
+ * CORS-clean bytes, and r2.dev serves no CORS headers (and is rate-limited).
+ * The URL is absolute (via window.location.origin) because the Office Online
+ * document preview requires a fully-qualified URL it can fetch server-side.
+ *
+ * Legacy rows holding an absolute URL on the old public base are rewritten to
+ * the proxy; other absolute URLs (e.g. Supabase signed URLs) pass through.
  */
 export function publicArtifactUrl(keyOrUrl: string): string {
   if (!keyOrUrl) return keyOrUrl
-  if (keyOrUrl.startsWith('http')) return keyOrUrl
-  const base = import.meta.env.VITE_R2_ARTIFACTS_PUBLIC_BASE as string | undefined
-  if (!base) {
-    console.warn('[r2] VITE_R2_ARTIFACTS_PUBLIC_BASE is not set')
-    return keyOrUrl
+
+  let key = keyOrUrl
+  if (keyOrUrl.startsWith('http')) {
+    const base = (import.meta.env.VITE_R2_ARTIFACTS_PUBLIC_BASE as string | undefined)
+      ?.replace(/\/$/, '')
+    if (!base || !keyOrUrl.startsWith(base)) return keyOrUrl
+    key = keyOrUrl.slice(base.length).replace(/^\//, '')
   }
-  return `${base.replace(/\/$/, '')}/${keyOrUrl}`
+
+  return `${window.location.origin}/api/artifact?key=${encodeURIComponent(key)}`
 }
 
 async function authHeadersForArtifact(): Promise<Record<string, string>> {

@@ -7,6 +7,8 @@ interface CommentComposerProps {
   screen: { x: number; y: number }
   /** width of the layer, used to keep the popover on-screen */
   layerWidth: number
+  /** height of the layer, used to flip the popover above near the bottom edge */
+  layerHeight: number
   /** the live recording stream — dictation taps its audio track */
   recordingStream: MediaStream | null
   onSave: (input: {
@@ -18,10 +20,14 @@ interface CommentComposerProps {
 }
 
 const COMPOSER_WIDTH = 256
+// Approximate rendered height, used only to decide whether to flip the popover
+// above the anchor when a tap lands near the bottom edge.
+const COMPOSER_EST_HEIGHT = 200
 
 export function CommentComposer({
   screen,
   layerWidth,
+  layerHeight,
   recordingStream,
   onSave,
   onCancel,
@@ -82,7 +88,10 @@ export function CommentComposer({
 
   // Keep the popover on-screen horizontally; open above if near the bottom edge.
   const left = Math.max(8, Math.min(screen.x, layerWidth - COMPOSER_WIDTH - 8))
-  const top = screen.y + 16
+  const flipUp = screen.y + 16 + COMPOSER_EST_HEIGHT > layerHeight
+  const top = flipUp
+    ? Math.max(8, screen.y - COMPOSER_EST_HEIGHT - 16)
+    : screen.y + 16
 
   return (
     <div

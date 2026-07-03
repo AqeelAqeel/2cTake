@@ -16,22 +16,25 @@ import {
  * something a `<img>` / `<iframe>` can load.
  *
  * Behavior is mode-dependent:
- *   - R2 enabled: returns the public bucket URL — synchronous string join.
+ *   - R2 enabled: returns a same-origin /api/artifact proxy URL.
  *   - R2 disabled: asks Supabase Storage for a 1-hour signed URL.
  *
- * Legacy rows already containing an absolute URL are passed through in both
- * modes (the `startsWith('http')` shortcut). This is also how dual-read
- * works during migration — `publicArtifactUrl` preserves absolute URLs.
+ * Legacy rows already containing an absolute URL are passed through
+ * (except old public-bucket URLs, which `publicArtifactUrl` rewrites to
+ * the proxy so they stay loadable by pdf.js / the annotation canvas).
  */
 async function resolveArtifactUrl<T extends { artifact_url: string }>(
   session: T
 ): Promise<T> {
   if (!session.artifact_url) return session
-  if (session.artifact_url.startsWith('http')) return session
 
+  // R2 mode first: publicArtifactUrl also rewrites legacy absolute URLs on
+  // the old public base to the same-origin proxy, so it must see them.
   if (isR2Enabled()) {
     return { ...session, artifact_url: publicArtifactUrl(session.artifact_url) }
   }
+
+  if (session.artifact_url.startsWith('http')) return session
 
   const { data } = await supabase.storage
     .from('artifacts')
