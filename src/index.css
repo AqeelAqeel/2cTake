@@ -217,6 +217,65 @@ html.landing-smooth {
   animation: sender-ob-progress 5s linear forwards;
 }
 
+/* Reviewer onboarding feature demos (rob-*) */
+@keyframes rob-marker-wipe {
+  0%, 8% { transform: scaleX(0); opacity: 1; }
+  42% { transform: scaleX(1); }
+  88% { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}
+@keyframes rob-marker-cursor {
+  0%, 8% { left: 0%; opacity: 0; }
+  14% { opacity: 1; }
+  42% { left: 100%; opacity: 1; }
+  84% { left: 100%; opacity: 1; }
+  100% { left: 100%; opacity: 0; }
+}
+@keyframes rob-pin-drop {
+  0%, 12% { opacity: 0; transform: translateY(-18px) scale(0.5); }
+  28% { opacity: 1; transform: translateY(0) scale(1); }
+  36% { transform: translateY(-5px) scale(1); }
+  44% { transform: translateY(0) scale(1); }
+  90% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(0) scale(1); }
+}
+@keyframes rob-popover-in {
+  0%, 40% { opacity: 0; transform: translateY(6px) scale(0.92); }
+  52% { opacity: 1; transform: translateY(0) scale(1); }
+  90% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(0) scale(1); }
+}
+@keyframes rob-type {
+  0%, 55% { width: 8%; }
+  78% { width: 100%; }
+  100% { width: 100%; }
+}
+@keyframes rob-word {
+  0% { opacity: 0; transform: translateY(4px); }
+  15% { opacity: 1; transform: translateY(0); }
+  85% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(0); }
+}
+@keyframes rob-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes rob-paused {
+  0%, 20% { opacity: 0; transform: translate(-50%, -4px); }
+  35%, 70% { opacity: 1; transform: translate(-50%, 0); }
+  85%, 100% { opacity: 0; transform: translate(-50%, -4px); }
+}
+@keyframes rob-press {
+  0%, 30% { transform: scale(1); }
+  40% { transform: scale(0.82); }
+  52% { transform: scale(1); }
+  100% { transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rob-demo * { animation: none !important; }
+}
+
 /* Warm scrollbar for review content */
 .warm-scroll::-webkit-scrollbar {
   width: 6px;

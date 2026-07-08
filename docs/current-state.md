@@ -59,8 +59,14 @@ The two roles drive the whole architecture:
 
 ### Reviewer side (anonymous, via `/review/:shareToken`)
 - No login. Enters a name; a stable `browser_uuid` is persisted locally.
+- **Onboarding tutorial** (`OnboardingOverlay`): a swipeable, skippable carousel of **four animated
+  feature demos** — each a lightweight looping mini-mock of the reviewer UI that "plays out" the
+  feature: (1) markup tools, (2) sticky comments, (3) recording + live transcription, (4)
+  pause/preview/re-record. Demos live in `src/components/onboarding/*` (`DemoFrame` + `MarkupDemo` /
+  `CommentDemo` / `RecordingDemo` / `ControlsDemo`); animations are pure CSS `rob-*` keyframes in
+  `index.css` (honor `prefers-reduced-motion`).
 - **Permissions gate** + **mic test** (audio sent to a Whisper-backed edge function to confirm the
-  mic actually works) during onboarding.
+  mic actually works) — the mandatory final step of the tutorial (Skip jumps straight here).
 - **Artifact viewer** with multi-page PDF rendering, document scroll/pan, and clamped viewport
   bounds (artifact can't be panned off-screen).
 - **Annotation canvas** (Fabric.js) — draw/shape/marker tools over the artifact while recording;
@@ -301,7 +307,8 @@ The current HEAD commit stages a **Cloudflare R2** migration behind the `VITE_US
 
 `ProtectedRoute` redirects unauthenticated users to `/login`. `PostHogPageview` captures SPA
 navigations. Notable components: `Recorder`, `SenderOnboardingWizard`, `FeedbackIntakeScreen`,
-`PermissionsGate`, `OnboardingStepMicTest`, `ArtifactViewer`, `TranscriptPanel`, and the
+`PermissionsGate`, `OnboardingOverlay` + `OnboardingStepMicTest` + the `components/onboarding/*`
+animated feature demos, `ArtifactViewer`, `TranscriptPanel`, and the
 `components/annotation/*` set (`AnnotationCanvas`, `AnnotationPlayback`, `ToolPalette`,
 `useAnnotationGestures`, `useAnnotationTools`). Media/lib helpers: `compositeStream` (webcam PiP),
 `pdfRenderer`, `recorder`, `transcription`, `upload`, `r2`, `supabase`, `posthog`.

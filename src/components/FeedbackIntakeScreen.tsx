@@ -226,7 +226,7 @@ export function FeedbackIntakeScreen({
             icon={<PlayCircle className="h-[22px] w-[22px]" />}
             color="indigo"
             title="Quick tutorial"
-            description="30-second walkthrough, optional"
+            description="Swipe through how it works, optional"
             delay={0.4}
           />
           <StepItem
